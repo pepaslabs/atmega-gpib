@@ -1,0 +1,22 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP DP6T
+D Double Pole, 6 Throw Rotary Switch
+$ENDCMP
+#
+$CMP DPDT
+D DPDT
+K switch
+$ENDCMP
+#
+$CMP DPST
+D DPST
+K switch
+$ENDCMP
+#
+$CMP SPDT
+D SPDT
+K switch
+$ENDCMP
+#
+#End Doc Library

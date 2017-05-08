@@ -1,0 +1,19 @@
+EESchema-DOCLIB  Version 2.0  Date: 5/5/2015 9:57:04 PM
+#
+$CMP 4N35
+D 4N35 NPN Opto-transistor, DIP6
+K opto
+$ENDCMP
+#
+$CMP 6N137
+D 6N135, DIP8, High Speed Optocoupler, TTL Compatible, CTR 18%
+K High Speed Optocoupler
+F http://www.semicon.toshiba.co.jp/docs/datasheet/en/Opto/6N135_6N136_en_datasheet_071001.pdf
+$ENDCMP
+#
+$CMP 817C
+D 817C NPN Opto-transistor, DIP4
+K opto
+$ENDCMP
+#
+#End Doc Library

@@ -1,0 +1,19 @@
+EESchema-DOCLIB  Version 2.0  Date: 4/1/2014 12:04:44 AM
+#
+$CMP BRIDGE
+D Bridge Rectifier
+$ENDCMP
+#
+$CMP DIODE
+D Diode
+$ENDCMP
+#
+$CMP SCHOTTKY
+D Schottky diode
+$ENDCMP
+#
+$CMP ZENER
+D Zener diode
+$ENDCMP
+#
+#End Doc Library

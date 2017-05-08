@@ -1,0 +1,47 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP 2N3904
+D 2N3904 NPN Transistor, 40V, 200mA
+F transistors/bipolar/*.*
+$ENDCMP
+#
+$CMP 2N3906
+D 2N3906 PNP Transistor, 40V, 200mA
+F transistors/bipolar/*.*
+$ENDCMP
+#
+$CMP BC550
+D BC550 NPN Transistor, 45V, 100mA, low noise
+F transistors/bipolar/*.*
+$ENDCMP
+#
+$CMP BC560
+D BC560 PNP Transistor, 45V, 100mA, low noise
+F transistors/bipolar/*.*
+$ENDCMP
+#
+$CMP NPN_BCE_TO-220
+D NPN Transistor, BCE pinout, TO-220 case
+$ENDCMP
+#
+$CMP NPN_CBE
+D NPN Transistor, CBE pinout
+F transistors/bipolar/*.*
+$ENDCMP
+#
+$CMP NPN_EBC
+D NPN Transistor, EBC pinout
+F transistors/bipolar/*.*
+$ENDCMP
+#
+$CMP PNP_CBE
+D PNP Transistor, CBE pinout
+F transistors/bipolar/*.*
+$ENDCMP
+#
+$CMP PNP_EBC
+D PNP Transistor, EBC pinout
+F transistors/bipolar/*.*
+$ENDCMP
+#
+#End Doc Library

@@ -1,0 +1,11 @@
+EESchema-DOCLIB  Version 2.0  Date: 3/16/2014 9:09:21 PM
+#
+$CMP RELAY_1_FORM_A
+D Relay, 1 Form A (SPST-NO)
+$ENDCMP
+#
+$CMP RELAY_1_FORM_C
+D Relay, 1 Form C (SPDT)
+$ENDCMP
+#
+#End Doc Library

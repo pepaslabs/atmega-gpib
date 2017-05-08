@@ -1,0 +1,31 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP 7805
+D +5V Linear Regulator
+$ENDCMP
+#
+$CMP 7812
+D +12V Linear Regulator
+$ENDCMP
+#
+$CMP 78L05
+D +5V Linear Regulator (100mA)
+$ENDCMP
+#
+$CMP 7905
+D Negative Linear Regulator
+$ENDCMP
+#
+$CMP 79L05
+D -5V Linear Regulator (100mA)
+$ENDCMP
+#
+$CMP LM317
+D Adjustable Positive Linear Regulator
+$ENDCMP
+#
+$CMP LM337
+D Adjustable Negative Linear Regulator
+$ENDCMP
+#
+#End Doc Library

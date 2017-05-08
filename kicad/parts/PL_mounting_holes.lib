@@ -1,0 +1,36 @@
+EESchema-LIBRARY Version 2.3  Date: 3/19/2015 9:34:21 PM
+#encoding utf-8
+#
+# Feet
+#
+DEF Feet H 0 30 N N 1 F N
+F0 "H" 0 55 30 H V C CNN
+F1 "Feet" 0 -60 30 H V C CNN
+F2 "~" 0 0 60 H V C CNN
+F3 "~" 0 0 60 H V C CNN
+$FPLIST
+ feet_*
+$ENDFPLIST
+DRAW
+C 0 0 31 0 1 0 N
+X 1 1 0 0 0 R 60 60 1 1 P
+ENDDRAW
+ENDDEF
+#
+# Hole
+#
+DEF Hole H 0 30 N N 1 F N
+F0 "H" 0 55 30 H V C CNN
+F1 "Hole" 0 -60 30 H V C CNN
+F2 "~" 0 0 60 H V C CNN
+F3 "~" 0 0 60 H V C CNN
+$FPLIST
+ hole_*
+$ENDFPLIST
+DRAW
+C 0 0 31 0 1 0 N
+X 1 1 0 0 0 R 60 60 1 1 P
+ENDDRAW
+ENDDEF
+#
+#End Library

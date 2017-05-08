@@ -1,0 +1,32 @@
+EESchema-DOCLIB  Version 2.0
+#
+$CMP POT
+D Potentiometer
+K R
+$ENDCMP
+#
+$CMP R_0W25
+D Resistor 1/4W 5% Carbon Film
+K R DEV
+$ENDCMP
+#
+$CMP R_0W25_1PCT
+D Resistor 1/4W 1% Metal Film
+K R DEV
+$ENDCMP
+#
+$CMP R_0W5
+D Resistor 1/2W 5% Carbon Film
+K R DEV
+$ENDCMP
+#
+$CMP R_1W
+D Resistor 1W 5% Carbon Film
+K R DEV
+$ENDCMP
+#
+$CMP R_FOIL
+D Metal Foil Precision Resistor
+$ENDCMP
+#
+#End Doc Library
