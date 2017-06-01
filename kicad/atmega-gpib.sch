@@ -1,25 +1,25 @@
 EESchema Schematic File Version 2
-LIBS:PL_power
-LIBS:FT230X
-LIBS:PL_GPIB
-LIBS:PL_analog_ICs
-LIBS:PL_capacitors
 LIBS:PL_connectors
-LIBS:PL_diodes
-LIBS:PL_displays
-LIBS:PL_inductors
-LIBS:PL_LEDs
-LIBS:PL_microcontrollers
-LIBS:PL_mounting_holes
 LIBS:PL_opamps
-LIBS:PL_opto
-LIBS:PL_references
-LIBS:PL_regulators
-LIBS:PL_relays
-LIBS:PL_resistors
-LIBS:PL_switchers
+LIBS:PL_comms
+LIBS:PL_microcontrollers
+LIBS:PL_power
+LIBS:PL_GPIB
 LIBS:PL_switches
 LIBS:PL_transistors
+LIBS:PL_regulators
+LIBS:PL_diodes
+LIBS:PL_resistors
+LIBS:PL_capacitors
+LIBS:PL_switchers
+LIBS:PL_opto
+LIBS:PL_inductors
+LIBS:PL_references
+LIBS:PL_relays
+LIBS:PL_displays
+LIBS:PL_analog_ICs
+LIBS:PL_mounting_holes
+LIBS:PL_LEDs
 LIBS:power
 LIBS:device
 LIBS:transistors
@@ -50,13 +50,13 @@ LIBS:atmel
 LIBS:contrib
 LIBS:valves
 LIBS:atmega-gpib-cache
-EELAYER 25 0
+EELAYER 27 0
 EELAYER END
 $Descr A4 11693 8268
 encoding utf-8
 Sheet 1 1
 Title ""
-Date ""
+Date "1 jun 2017"
 Rev ""
 Comp ""
 Comment1 ""
@@ -67,30 +67,30 @@ $EndDescr
 Wire Wire Line
 	3550 1650 4600 1650
 Wire Wire Line
-	6000 3350 5900 3350
+	5900 3350 5800 3350
 Wire Wire Line
-	6000 2650 6000 3450
+	5900 2650 5900 3450
 Wire Wire Line
-	5900 3250 6000 3250
-Connection ~ 6000 3350
+	5800 3250 5900 3250
+Connection ~ 5900 3350
 Wire Wire Line
-	5900 3150 6000 3150
-Connection ~ 6000 3250
+	5800 3150 5900 3150
+Connection ~ 5900 3250
 Wire Wire Line
-	5900 3050 6000 3050
-Connection ~ 6000 3150
+	5800 3050 5900 3050
+Connection ~ 5900 3150
 Wire Wire Line
-	5900 2950 6000 2950
-Connection ~ 6000 3050
+	5800 2950 5900 2950
+Connection ~ 5900 3050
 Wire Wire Line
-	5900 2850 6000 2850
-Connection ~ 6000 2950
+	5800 2850 5900 2850
+Connection ~ 5900 2950
 Wire Wire Line
-	5900 2750 6000 2750
-Connection ~ 6000 2850
+	5800 2750 5900 2750
+Connection ~ 5900 2850
 Wire Wire Line
-	5900 2650 6000 2650
-Connection ~ 6000 2750
+	5800 2650 5900 2650
+Connection ~ 5900 2750
 Text GLabel 3650 3350 2    40   Input ~ 0
 TX
 Text GLabel 3650 3250 2    40   Input ~ 0
@@ -132,7 +132,7 @@ Wire Wire Line
 Wire Wire Line
 	1550 3850 1650 3850
 Connection ~ 1550 3950
-NoConn ~ 1650 2050
+NoConn ~ 1650 2250
 $Comp
 L USB_B P3
 U 1 1 590FD0B6
@@ -144,25 +144,14 @@ F 3 "" V 6200 5450 50  0000 C CNN
 	1    6250 5550
 	0    -1   1    0   
 $EndComp
-$Comp
-L FT230XS U1
-U 1 1 59101FDC
-P 8900 5350
-F 0 "U1" H 8450 5900 50  0000 L CNN
-F 1 "FT230XS" H 9350 5900 50  0000 R CNN
-F 2 "Housings_SSOP:SSOP-16_3.9x4.9mm_Pitch0.635mm" H 8900 5350 50  0001 C CNN
-F 3 "DOCUMENTATION" H 8900 5350 50  0001 C CNN
-	1    8900 5350
-	1    0    0    -1  
-$EndComp
-Text GLabel 9650 4950 2    40   Input ~ 0
+Text GLabel 9550 4950 2    40   Input ~ 0
 TX
-Text GLabel 9650 5050 2    40   Input ~ 0
+Text GLabel 9550 5050 2    40   Input ~ 0
 RX
 Wire Wire Line
-	9550 4950 9650 4950
+	9450 4950 9550 4950
 Wire Wire Line
-	9550 5050 9650 5050
+	9450 5050 9550 5050
 Text GLabel 7350 4750 1    40   Input ~ 0
 5V
 Wire Wire Line
@@ -172,8 +161,6 @@ Wire Wire Line
 Wire Wire Line
 	8150 5750 8250 5750
 Connection ~ 8150 5850
-Wire Wire Line
-	8250 5050 8250 5250
 $Comp
 L C_CER C7
 U 1 1 59103043
@@ -210,16 +197,15 @@ Wire Wire Line
 	1400 1950 1400 1900
 Wire Wire Line
 	1300 1650 1300 1550
-Connection ~ 8250 5150
 $Comp
 L GPIB P2
 U 1 1 59104927
-P 5250 2450
-F 0 "P2" H 4800 3400 40  0000 L CNN
-F 1 "GPIB" H 5700 3400 40  0000 R CNN
-F 2 "gpib_conn_male:gpib_conn_male" H 4850 2550 60  0001 C CNN
-F 3 "" H 4850 2550 60  0000 C CNN
-	1    5250 2450
+P 5200 2450
+F 0 "P2" H 4750 3400 40  0000 L CNN
+F 1 "GPIB" H 5650 3400 40  0000 R CNN
+F 2 "gpib_conn_male:gpib_conn_male" H 4800 2550 60  0001 C CNN
+F 3 "" H 4800 2550 60  0000 C CNN
+	1    5200 2450
 	1    0    0    -1  
 $EndComp
 $Comp
@@ -237,8 +223,8 @@ Wire Wire Line
 	6550 5650 6650 5650
 Wire Wire Line
 	6650 5650 6650 5750
-NoConn ~ 9550 5850
-NoConn ~ 9550 5550
+NoConn ~ 9450 5850
+NoConn ~ 9450 5550
 $Comp
 L FERRITE_BEAD FB1
 U 1 1 59105F71
@@ -346,12 +332,12 @@ Wire Wire Line
 $Comp
 L GND #PWR01
 U 1 1 591088AE
-P 6000 3450
-F 0 "#PWR01" H 6000 3250 50  0001 C CNN
-F 1 "GND" H 6000 3350 40  0000 C CNN
-F 2 "" H 6000 3450 50  0000 C CNN
-F 3 "" H 6000 3450 50  0000 C CNN
-	1    6000 3450
+P 5900 3450
+F 0 "#PWR01" H 5900 3250 50  0001 C CNN
+F 1 "GND" H 5900 3350 40  0000 C CNN
+F 2 "" H 5900 3450 50  0000 C CNN
+F 3 "" H 5900 3450 50  0000 C CNN
+	1    5900 3450
 	1    0    0    -1  
 $EndComp
 $Comp
@@ -536,7 +522,7 @@ Wire Wire Line
 Wire Wire Line
 	10150 5550 10150 5650
 Wire Wire Line
-	10150 5650 9550 5650
+	10150 5650 9450 5650
 $Comp
 L LED D2
 U 1 1 5910C1DE
@@ -566,7 +552,7 @@ Wire Wire Line
 Wire Wire Line
 	10450 5550 10450 5750
 Wire Wire Line
-	10450 5750 9550 5750
+	10450 5750 9450 5750
 Text GLabel 7950 5050 0    40   Input ~ 0
 VCCIO
 Connection ~ 8050 5050
@@ -589,14 +575,14 @@ Wire Wire Line
 	3550 3450 3650 3450
 Wire Wire Line
 	3550 3550 3650 3550
-Text GLabel 9650 5250 2    40   Input ~ 0
+Text GLabel 9550 5250 2    40   Input ~ 0
 RTS
-Text GLabel 9650 5350 2    40   Input ~ 0
+Text GLabel 9550 5350 2    40   Input ~ 0
 CTS
 Wire Wire Line
-	9550 5250 9650 5250
+	9450 5250 9550 5250
 Wire Wire Line
-	9550 5350 9650 5350
+	9450 5350 9550 5350
 Text GLabel 6650 5350 2    40   Input ~ 0
 5V_EXT
 Wire Wire Line
@@ -614,9 +600,7 @@ Text GLabel 3650 3100 2    40   Input ~ 0
 Wire Wire Line
 	1300 1650 1650 1650
 Wire Wire Line
-	1650 1850 1600 1850
-Wire Wire Line
-	1600 1850 1600 1650
+	1600 1650 1600 1950
 Connection ~ 1600 1650
 Wire Wire Line
 	4500 3000 4500 3050
@@ -706,4 +690,31 @@ Wire Wire Line
 	4000 2150 3550 2150
 NoConn ~ 3550 2250
 NoConn ~ 3550 3650
+$Comp
+L FT230XS U?
+U 1 1 592F9057
+P 8850 5350
+F 0 "U?" H 8400 5900 40  0000 L CNN
+F 1 "FT230XS" H 9300 5900 40  0000 R CNN
+F 2 "~" H 8850 5350 60  0000 C CNN
+F 3 "~" H 8850 5350 60  0000 C CNN
+	1    8850 5350
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	8250 5050 8250 5250
+Connection ~ 8250 5150
+Wire Wire Line
+	1600 1950 1650 1950
+$Comp
+L USB J?
+U 1 1 592F93C4
+P 5400 5650
+F 0 "J?" H 5350 6050 60  0000 C CNN
+F 1 "USB" V 5150 5800 60  0000 C CNN
+F 2 "" H 5400 5650 60  0000 C CNN
+F 3 "" H 5400 5650 60  0000 C CNN
+	1    5400 5650
+	1    0    0    -1  
+$EndComp
 $EndSCHEMATC
