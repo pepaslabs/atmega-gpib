@@ -1,4 +1,4 @@
-EESchema-DOCLIB  Version 2.0
+EESchema-DOCLIB  Version 2.0  Date: Fri 12 May 2017 11:30:28 PM CDT
 #
 $CMP INA200
 D High-side current shunt monitor
@@ -18,6 +18,10 @@ $ENDCMP
 #
 $CMP NE5532
 D Dual opamp (low noise)
+$ENDCMP
+#
+$CMP OP07
+D Single opamp
 $ENDCMP
 #
 $CMP TL072
