@@ -196,7 +196,7 @@ boolean check_eoi() {
 #define DIO8_ARDUINO_PIN  12
 
 
-void gpib_write(byte_t data) {
+void gpib_set_data_bus(byte_t data) {
     set_gpib_data_bus_mode(OUTPUT);
     digitalWrite(DIO1_ARDUINO_PIN, GET_BIT(data, 0));
     digitalWrite(DIO2_ARDUINO_PIN, GET_BIT(data, 1));
@@ -208,7 +208,7 @@ void gpib_write(byte_t data) {
     digitalWrite(DIO8_ARDUINO_PIN, GET_BIT(data, 7));
 }
 
-byte_t gpib_read() {
+byte_t gpib_get_data_bus() {
     set_gpib_data_bus_mode(INPUT_PULLUP);
     byte_t data = 0x0;
     digitalRead(DIO1_ARDUINO_PIN) ? CLEAR_BIT(data, 0) : SET_BIT(data, 0);
@@ -220,6 +220,10 @@ byte_t gpib_read() {
     digitalRead(DIO7_ARDUINO_PIN) ? CLEAR_BIT(data, 6) : SET_BIT(data, 6);
     digitalRead(DIO8_ARDUINO_PIN) ? CLEAR_BIT(data, 7) : SET_BIT(data, 7);
     return data;
+}
+
+void gpib_release_data_bus() {
+    set_gpib_data_bus_mode(INPUT_PULLUP);    
 }
 
 void set_gpib_data_bus_mode(arduino_pinmode_t mode) {
@@ -244,6 +248,139 @@ void assert_arduino_pin(arduino_pin_t pin) {
 void unassert_arduino_pin(arduino_pin_t pin) {
     pinMode(pin, INPUT_PULLUP);
 }
+
+
+// --- Misc utils functions ---
+
+void settle() {
+    delayMicroseconds(150);
+}
+
+
+// Useful resources:
+// - http://www.hp9845.net/9845/tutorials/hpib/
+
+
+// --- GPIB implementation ---
+
+
+void send_byte(byte_t data) {
+    // wait for all devices to be ready for data.
+    while (check_nrfd() == true) { settle(); }
+
+    // place our data onto the bus
+    gpib_set_data_bus(data);
+    settle();
+
+    // inform the listeners that the data is ready.
+    assert_dav();
+    settle();
+
+    // wait for all devices to read the data.
+    while (check_ndac() == true) { settle(); }
+
+    // indicate that we are done transmitting this byte.
+    unassert_dav();
+    settle();
+
+    // release the data bus lines.
+    gpib_release_data_bus();
+    settle();  
+}
+
+// Uni-line (single) commands.
+// Uni-line commands only require that one bus line be asserted, and do not require a handshake.
+// Use the assert_x functions for these commands:
+void IFC() {
+    assert_ifc();
+    settle();
+    unassert_ifc();
+    settle();
+}
+
+
+// Universal multi-line commands
+// Universal multi-line commands work by asserting ATN while putting a data byte on the bus.
+// The data byte determines which command is issued.
+// Universal multi-line commands apply to all devices on the bus.
+#define LAD_BASE  0x20
+#define TAD_BASE  0x40
+#define SAD_BASE  0x60
+
+byte_t self_gpib_address = 30;
+
+// "Device Listen Address": configure the device at the given address to be a listener.
+void LAD(byte_t address) {
+    send_byte(LAD_BASE + address);
+}
+
+// "Device Talk Address": configure the device at the given address to be a talker.
+void TAD(byte_t address) {
+    send_byte(TAD_BASE + address);
+}
+
+// "Secondary Device Address".
+void SAD(byte_t address) {
+    send_byte(SAD_BASE + address);
+}
+
+// "My Listen Address": declare self to be the listener.
+void MLA() {
+    LAD(self_gpib_address);
+}
+
+// "My Talk Address": declare self to be the talker.
+void MTA() {
+    TAD(self_gpib_address);
+}
+
+// "Unlisten": change all listeners back to an idle state.
+void UNL() {
+    LAD(31);
+}
+
+// "Untalk": change all talkers back to an idle state.
+void UNT() {
+    TAD(31);
+}
+
+
+// REN: place the device at the given address into REMOTE (listen) mode.
+void REN(byte_t address) {
+    assert_ren();
+    assert_atn();
+    settle();
+
+    UNL();
+    TAD(self_gpib_address);
+    LAD(address);
+
+    unassert_atn();
+    settle();
+}
+
+
+void test_K196() {
+    REN(17);
+    send_byte('D');
+    send_byte('A');
+    send_byte('T');
+    send_byte('M');
+    send_byte('E');
+    send_byte('G');
+    send_byte('A');
+    send_byte('X');
+}
+
+
+// Addressed commands
+// Addressed commands use multiple bus lines.
+// Addressed commands work by asserting ATN while putting a data byte on the bus.
+// The data byte determines which command is issued.
+// Addressed commands apply to only one device on the bus, so they require some setup.
+// Before you can issue one of these commands, you need to set up a device as a listener (or talker).
+
+
 
 
 // --- Low-level remote control protocol ---
@@ -322,6 +459,7 @@ void unassert_arduino_pin(arduino_pin_t pin) {
 // %  Print an informational message ("atmega-gpib\n")
 
 #define CMD_PING   '%'
+#define CMD_PERFORM_TEST_1   '1'
 
 
 // --- GPIB commands ---
@@ -492,13 +630,13 @@ void wait_until_unasserted(char bus_line, SoftwareSerial *serial) {
 
 
 void write_data(byte_t data, SoftwareSerial *serial) {
-    gpib_write(data);
+    gpib_set_data_bus(data);
     serial->write("ok\n");    
 }
 
 
 void read_char_data(SoftwareSerial *serial) {
-    char ch = (char)gpib_read();
+    char ch = (char)gpib_get_data_bus();
     serial->write("data: ");
     serial->write(ch);
     serial->write("\n");
@@ -506,7 +644,7 @@ void read_char_data(SoftwareSerial *serial) {
 
 
 void read_hex_data(SoftwareSerial *serial) {
-    byte_t data = gpib_read();
+    byte_t data = gpib_get_data_bus();
     char buff[3];
     byte_to_hex(data, buff);
     serial->write("data: ");
@@ -760,6 +898,11 @@ void parse_and_run_cmd(char_buffer_t *buffer, SoftwareSerial *serial) {
             serial->write("atmega-gpib\n");
             break;
 
+        case CMD_PERFORM_TEST_1:
+            test_K196();
+            serial->write("ok\n");
+            break;
+
         default:
             print_error(ERROR_UNKNOWN_COMMAND, serial);
             char buff[3];
@@ -804,7 +947,21 @@ void setup() {
     pinMode(RX_ARDUINO_PIN, INPUT);
     pinMode(TX_ARDUINO_PIN, OUTPUT);
     serial.begin(9600);
-    delay(1);
+    
+    // Initialize the GPIB bus
+    unassert_atn();
+    unassert_ifc();
+    unassert_srq();
+    unassert_ren();
+    unassert_eoi();
+
+    unassert_dav();
+    unassert_ndac();
+    unassert_nrfd();
+
+    gpib_release_data_bus();
+
+    settle();
 }
 
 void loop() {
