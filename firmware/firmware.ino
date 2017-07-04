@@ -26,6 +26,11 @@
 // See http://www.eevblog.com/forum/testgear/gpib-to-usb-controlleradapter/msg349323/#msg349323
 
 
+#include <SoftwareSerial.h>
+#include "buffer.h"
+#include "error.h"
+
+
 // --- Bit manipulation ---
 
 #define SET_BIT(ADDRESS, BITNUM)   (ADDRESS |= (1<<BITNUM))
@@ -170,6 +175,11 @@ boolean check_ren() {
 }
 
 boolean check_eoi() {
+    // Configure pin as input
+    CLEAR_BIT(DDRB, DDB7);
+    // Enable the built-in pull-up resistor
+    SET_BIT(PORTB, PB7);
+
     return GET_BIT(PINB, PINB7) == 0 ? true : false;
 }
 
@@ -200,7 +210,7 @@ void gpib_write(byte_t data) {
 
 byte_t gpib_read() {
     set_gpib_data_bus_mode(INPUT_PULLUP);
-    byte_t data;
+    byte_t data = 0x0;
     digitalRead(DIO1_ARDUINO_PIN) ? CLEAR_BIT(data, 0) : SET_BIT(data, 0);
     digitalRead(DIO2_ARDUINO_PIN) ? CLEAR_BIT(data, 1) : SET_BIT(data, 1);
     digitalRead(DIO3_ARDUINO_PIN) ? CLEAR_BIT(data, 2) : SET_BIT(data, 2);
@@ -236,9 +246,557 @@ void unassert_arduino_pin(arduino_pin_t pin) {
 }
 
 
+// --- Low-level remote control protocol ---
+
+
+// Handshake bus line names:
+// v  DAV
+// n  NRFD
+// k  NDAC
+
+#define LINE_DAV   'v'
+#define LINE_NRFD  'n'
+#define LINE_NDAC  'k'
+
+
+// Interface management bus line names:
+// i  IFC
+// a  ATN
+// s  SRQ
+// r  REN
+// e  EOI
+
+#define LINE_IFC   'i'
+#define LINE_ATN   'a'
+#define LINE_SRQ   's'
+#define LINE_REN   'r'
+#define LINE_EOI   'e'
+
+
+// Data bus names:
+// c  Data bus (ASCII character mode)
+// x  Data bus (Binary / Hex mode)
+
+#define LINE_DATA_CHAR  'c'
+#define LINE_DATA_HEX   'x'
+
+
+// Commands for individual bus lines:
+// t  Assert a line
+// f  Unassert a line
+// ?  Check the value of a line
+// @  Wait until a line is asserted
+// !  Wait until a line is unasserted
+
+// Examples:
+// tv  Assert DAV
+// fn  Unassert NRFD
+// ?s  Check the value of SRQ
+// @n  Wait until NRFD is asserted
+// !e  Wait until EOI is unasserted
+
+#define CMD_ASSERT           't'
+#define CMD_UNASSERT         'f'
+#define CMD_CHECK            '?'
+#define CMD_WAIT_ASSERTED    '@'
+#define CMD_WAIT_UNASSERTED  '!'
+
+
+// Commands for the data bus:
+// ?c  Read the data bus lines (prints an ASCII character)
+// c   Set the data bus lines (takes one ASCII character as its argument)
+// ?x  Read the data bus lines (prints a hexidecimal byte)
+// x   Set the data bus lines (takes a hexidecimal byte as its argument)
+
+// Examples:
+// ?c   Read and print a ASCII character from the data bus
+// cY   Place the ASCII character 'Y' onto the data bus lines
+// ?x   Read and print (as hexidecimal) a byte from the data bus lines
+// xFF  Place the byte 0xFF onto the data bus lines
+
+#define CMD_WRITE_CHAR  'c'
+#define CMD_WRITE_HEX   'x'
+
+
+// Misc. commands:
+// %  Print an informational message ("atmega-gpib\n")
+
+#define CMD_PING   '%'
+
+
+// --- GPIB commands ---
+
+
+void assert_bus_line(char bus_line, SoftwareSerial *serial) {
+    switch (bus_line) {
+        case LINE_DAV:
+            assert_dav();
+            break;
+        case LINE_NRFD:
+            assert_nrfd();
+            break;
+        case LINE_NDAC:
+            assert_ndac();
+            break;
+        case LINE_IFC:
+            assert_ifc();
+            break;
+        case LINE_ATN:
+            assert_atn();
+            break;
+        case LINE_SRQ:
+            assert_srq();
+            break;
+        case LINE_REN:
+            assert_ren();
+            break;
+        case LINE_EOI:
+            assert_eoi();
+            break;
+    }
+    serial->write("ok\n");
+}
+
+
+void unassert_bus_line(char bus_line, SoftwareSerial *serial) {
+    switch (bus_line) {
+        case LINE_DAV:
+            unassert_dav();
+            break;
+        case LINE_NRFD:
+            unassert_nrfd();
+            break;
+        case LINE_NDAC:
+            unassert_ndac();
+            break;
+        case LINE_IFC:
+            unassert_ifc();
+            break;
+        case LINE_ATN:
+            unassert_atn();
+            break;
+        case LINE_SRQ:
+            unassert_srq();
+            break;
+        case LINE_REN:
+            unassert_ren();
+            break;
+        case LINE_EOI:
+            unassert_eoi();
+            break;
+    }
+    serial->write("ok\n");
+}
+
+
+void check_bus_line(char bus_line, SoftwareSerial *serial) {
+    boolean line_status;
+    switch (bus_line) {
+        case LINE_DAV:
+            line_status = check_dav();
+            break;
+        case LINE_NRFD:
+            line_status = check_dav();
+            break;
+        case LINE_NDAC:
+            line_status = check_dav();
+            break;
+        case LINE_IFC:
+            line_status = check_dav();
+            break;
+        case LINE_ATN:
+            line_status = check_dav();
+            break;
+        case LINE_SRQ:
+            line_status = check_dav();
+            break;
+        case LINE_REN:
+            line_status = check_dav();
+            break;
+        case LINE_EOI:
+            line_status = check_dav();
+            break;
+        default:
+            print_error(ERROR_UNKNOWN_BUS_LINE, serial);
+            return;
+    }
+
+    if (line_status == true) {
+        serial->write("asserted\n");
+    } else {
+        serial->write("unasserted\n");        
+    }
+}
+
+
+void wait_until_asserted(char bus_line, SoftwareSerial *serial) {
+    switch (bus_line) {
+        case LINE_DAV:
+            while (check_dav() == false) { continue; }
+            break;
+        case LINE_NRFD:
+            while (check_nrfd() == false) { continue; }
+            break;
+        case LINE_NDAC:
+            while (check_ndac() == false) { continue; }
+            break;
+        case LINE_IFC:
+            while (check_ifc() == false) { continue; }
+            break;
+        case LINE_ATN:
+            while (check_atn() == false) { continue; }
+            break;
+        case LINE_SRQ:
+            while (check_srq() == false) { continue; }
+            break;
+        case LINE_REN:
+            while (check_ren() == false) { continue; }
+            break;
+        case LINE_EOI:
+            while (check_eoi() == false) { continue; }
+            break;
+    }
+    serial->write("ok\n");
+}
+
+
+void wait_until_unasserted(char bus_line, SoftwareSerial *serial) {
+    switch (bus_line) {
+        case LINE_DAV:
+            while (check_dav() == true) { continue; }
+            break;
+        case LINE_NRFD:
+            while (check_nrfd() == true) { continue; }
+            break;
+        case LINE_NDAC:
+            while (check_ndac() == true) { continue; }
+            break;
+        case LINE_IFC:
+            while (check_ifc() == true) { continue; }
+            break;
+        case LINE_ATN:
+            while (check_atn() == true) { continue; }
+            break;
+        case LINE_SRQ:
+            while (check_srq() == true) { continue; }
+            break;
+        case LINE_REN:
+            while (check_ren() == true) { continue; }
+            break;
+        case LINE_EOI:
+            while (check_eoi() == true) { continue; }
+            break;
+    }
+    serial->write("ok\n");
+}
+
+
+void write_data(byte_t data, SoftwareSerial *serial) {
+    gpib_write(data);
+    serial->write("ok\n");    
+}
+
+
+void read_char_data(SoftwareSerial *serial) {
+    char ch = (char)gpib_read();
+    serial->write("data: ");
+    serial->write(ch);
+    serial->write("\n");
+}
+
+
+void read_hex_data(SoftwareSerial *serial) {
+    byte_t data = gpib_read();
+    char buff[3];
+    byte_to_hex(data, buff);
+    serial->write("data: ");
+    serial->write(buff);
+    serial->write("\n");
+}
+
+
+// --- Command parsing ---
+
+
+boolean hex_to_nibble(char ch, byte_t *out) {
+    switch (ch) {
+        case '0':
+            *out = 0x0;
+            return true;
+        case '1':
+            *out = 0x1;
+            return true;
+        case '2':
+            *out = 0x2;
+            return true;
+        case '3':
+            *out = 0x3;
+            return true;
+        case '4':
+            *out = 0x4;
+            return true;
+        case '5':
+            *out = 0x5;
+            return true;
+        case '6':
+            *out = 0x6;
+            return true;
+        case '7':
+            *out = 0x7;
+            return true;
+        case '8':
+            *out = 0x8;
+            return true;
+        case '9':
+            *out = 0x9;
+            return true;
+        case 'a':
+        case 'A':
+            *out = 0xA;
+            return true;
+        case 'b':
+        case 'B':
+            *out = 0xB;
+            return true;
+        case 'c':
+        case 'C':
+            *out = 0xC;
+            return true;
+        case 'd':
+        case 'D':
+            *out = 0xD;
+            return true;
+        case 'e':
+        case 'E':
+            *out = 0xE;
+            return true;
+        case 'f':
+        case 'F':
+            *out = 0xF;
+            return true;
+        default:
+            return false;
+    }
+}
+
+
+boolean hex_to_byte(char high, char low, byte_t *out) {
+    // originally inspired by http://stackoverflow.com/a/12839870/558735
+
+    byte_t high_bin = 0x0;
+    byte_t low_bin = 0x0;
+    boolean ret;
+    
+    ret = hex_to_nibble(high, &high_bin);
+    if (ret == false) {
+        return ret;
+    }
+
+    ret = hex_to_nibble(low, &low_bin);
+    if (ret == false) {
+        return ret;
+    }
+
+    *out = (high_bin << 4) || low_bin;
+    return true;
+}
+
+
+void byte_to_hex(byte_t data, char *buff) {
+    // originally inspired by http://stackoverflow.com/a/12839870/558735
+ 
+    char map[16+1] = "0123456789ABCDEF";
+
+    byte_t high_nibble = (data & 0xF0) >> 4;
+    *buff = map[high_nibble];
+    buff++;
+
+    byte_t low_nibble = data & 0x0F;
+    *buff = map[low_nibble];
+    buff++;
+
+    *buff = '\0';
+}
+
+
+#define MAX_EXPECTED_LINE_LEN 5  // "xFF\r\n"
+#define BUFF_LEN (MAX_EXPECTED_LINE_LEN + 1)  // add one to account for terminating NULL char.
+
+char buffer_bytes[BUFF_LEN];
+char_buffer_t buffer = { .len = BUFF_LEN, .bytes = buffer_bytes };
+
+
+// Read from serial until '\n', writing to a buffer.
+error_t read_serial_line(SoftwareSerial *serial, char_buffer_t *buffer) {
+
+    uint8_t num_chars_consumed = 0;
+    char *buff_ptr = buffer->bytes;
+    boolean has_read_first_char = false;
+
+    while (true) {
+        // busy-wait for serial data to become available
+        while (serial->available() == 0) {
+            continue;
+        }
+
+        *buff_ptr = serial->read();
+
+        // throw away any leading \n \r garbage leftover from the previous line
+        if ((*buff_ptr == '\r' || *buff_ptr == '\n') && (has_read_first_char == false)) {
+            continue;
+        }
+        has_read_first_char = true;
+        
+        num_chars_consumed++;
+
+        if (*buff_ptr == '\r' || *buff_ptr == '\n') {
+            *buff_ptr = '\0';
+            return OK_NO_ERROR;
+        } else if (num_chars_consumed == buffer->len - 1) {
+            *buff_ptr = '\0';
+            return ERROR_BUFFER_FILLED_UP_BEFORE_SENTINEL_REACHED;
+        } else {
+            buff_ptr++;
+            continue;
+        }
+    }
+}
+
+
+void parse_and_run_cmd(char_buffer_t *buffer, SoftwareSerial *serial) {
+    int buff_len;
+    char cmd;
+    char bus_line;
+    byte_t data_bin;
+    char data_hex_high;
+    char data_hex_low;
+    boolean ret;
+
+    buff_len = strlen(buffer->bytes);
+    if (buff_len < 1) {
+        print_error(ERROR_MALFORMED_COMMAND, serial);
+        return;
+    }
+
+    cmd = buffer->bytes[0];
+    switch (cmd) {
+
+        case CMD_ASSERT:
+            if (buff_len < 2) {
+                print_error(ERROR_MALFORMED_COMMAND, serial);
+                return;
+            }
+            bus_line = buffer->bytes[1];
+            assert_bus_line(bus_line, serial);
+            break;
+
+        case CMD_UNASSERT:
+            if (buff_len < 2) {
+                print_error(ERROR_MALFORMED_COMMAND, serial);
+                return;
+            }
+            bus_line = buffer->bytes[1];
+            unassert_bus_line(bus_line, serial);
+            break;
+
+        case CMD_CHECK:
+            if (buff_len < 2) {
+                print_error(ERROR_MALFORMED_COMMAND, serial);
+                return;
+            }
+            bus_line = buffer->bytes[1];
+            if (bus_line == LINE_DATA_CHAR) {
+                read_char_data(serial);
+            } else if (bus_line == LINE_DATA_HEX) {
+                read_hex_data(serial);
+            } else {
+                check_bus_line(bus_line, serial);
+            }
+            break;
+
+        case CMD_WAIT_ASSERTED:
+            if (buff_len < 2) {
+                print_error(ERROR_MALFORMED_COMMAND, serial);
+                return;
+            }
+            bus_line = buffer->bytes[1];
+            wait_until_asserted(bus_line, serial);
+            break;
+
+        case CMD_WAIT_UNASSERTED:
+            if (buff_len < 2) {
+                print_error(ERROR_MALFORMED_COMMAND, serial);
+                return;
+            }
+            bus_line = buffer->bytes[1];
+            wait_until_unasserted(bus_line, serial);
+            break;
+
+        case CMD_WRITE_CHAR:
+            if (buff_len < 2) {
+                print_error(ERROR_MALFORMED_COMMAND, serial);
+                return;
+            }
+            data_bin = buffer->bytes[1];
+            write_data(data_bin, serial);
+            break;
+
+        case CMD_WRITE_HEX:
+            if (buff_len < 3) {
+                print_error(ERROR_MALFORMED_COMMAND, serial);
+                return;
+            }
+            data_hex_high = buffer->bytes[1];
+            data_hex_low = buffer->bytes[2];
+            ret = hex_to_byte(data_hex_high, data_hex_low, &data_bin);
+            if (ret == false) {
+                print_error(ERROR_INVALID_HEX, serial);
+                return;
+            }
+            write_data(data_bin, serial);
+            break;
+
+        case CMD_PING:
+            serial->write("atmega-gpib\n");
+            break;
+
+        default:
+            print_error(ERROR_UNKNOWN_COMMAND, serial);
+            char buff[3];
+            byte_to_hex(buffer->bytes[0], buff);
+            serial->write("bad command hex: ");
+            serial->write(buff);
+            serial->write("\n");
+            break;
+    }
+}
+
+
+void print_error(error_t err, SoftwareSerial *serial) {
+    switch (err) {
+        case OK_NO_ERROR:
+            return;
+        case ERROR_BUFFER_FILLED_UP_BEFORE_SENTINEL_REACHED:
+            serial->write("Error: buffer filled up before sentinel reached.\n");
+            break;
+        case ERROR_UNKNOWN_COMMAND:
+            serial->write("Error: unknown command.\n");
+            break;
+        case ERROR_MALFORMED_COMMAND:
+            serial->write("Error: malformed command.\n");
+            break;
+        case ERROR_UNKNOWN_BUS_LINE:
+            serial->write("Error: unknown bus line.\n");
+            break;
+        case ERROR_INVALID_HEX:
+            serial->write("Error: invalid hex value.\n");
+            break;
+    }
+}
+
+
 // --- Main program ---
 
-#include <SoftwareSerial.h>
 SoftwareSerial serial = SoftwareSerial(RX_ARDUINO_PIN, TX_ARDUINO_PIN);
 
 void setup() {
@@ -246,12 +804,18 @@ void setup() {
     pinMode(RX_ARDUINO_PIN, INPUT);
     pinMode(TX_ARDUINO_PIN, OUTPUT);
     serial.begin(9600);
+    delay(1);
 }
 
 void loop() {
-    // let's start by just getting a simple "hello" program to work.
-    serial.write("hello!\n");
-    delay(1000);
+    error_t err = read_serial_line(&serial, &buffer);
+
+    if (err != OK_NO_ERROR) {
+        print_error(err, &serial);
+        return;
+    }
+
+    parse_and_run_cmd(&buffer, &serial);
 }
 
 

@@ -1,0 +1,13 @@
+#ifndef _ERROR_H_
+#define _ERROR_H_
+
+typedef enum _error_t {
+    OK_NO_ERROR=0,
+    ERROR_BUFFER_FILLED_UP_BEFORE_SENTINEL_REACHED=1,
+    ERROR_UNKNOWN_COMMAND=2,
+    ERROR_MALFORMED_COMMAND=3,
+    ERROR_UNKNOWN_BUS_LINE=4,
+    ERROR_INVALID_HEX=5
+} error_t;
+
+#endif
