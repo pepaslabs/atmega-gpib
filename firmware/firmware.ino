@@ -307,7 +307,7 @@ void IFC() {
 #define TAD_BASE  0x40
 #define SAD_BASE  0x60
 
-byte_t self_gpib_address = 30;
+byte_t self_gpib_address = 21; // By convention, the controller is typically address 21.
 
 // "Device Listen Address": configure the device at the given address to be a listener.
 void LAD(byte_t address) {
@@ -352,8 +352,8 @@ void REN(byte_t address) {
     settle();
 
     UNL();
-    TAD(self_gpib_address);
     LAD(address);
+    TAD(self_gpib_address);
 
     unassert_atn();
     settle();
