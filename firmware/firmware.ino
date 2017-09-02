@@ -2,12 +2,11 @@
 // See https://github.com/pepaslabs/atmega-gpib
 
 // Copyright 2017 Jason Pepas
-// Released under the terms of the MIT License
-// See https://opensource.org/licenses/MIT
+// Released under the terms of the MIT License.  See https://opensource.org/licenses/MIT
 
 
 // Uncomment one of these lines, depending upon which board you are using:
-//#define BOARDV1
+// #define BOARDV1
 #define BOARDV2
 
 
@@ -55,13 +54,40 @@
 //                       +---------------------------+
 
 
-#define FIRMWARE_VERSION "2.0.1"
+#define FIRMWARE_VERSION "2.1.1"
 
 /*
 Firmware history:
 - 2.0.1: Adding "++ver" command.  Adding support for v1 and v2 boards.
+- 2.1.1: Adding "++baud" command.
 */
 
+
+// --- Command documentation ---
+
+// ++ver
+// Prints the version of this firmware.
+
+// ++baud 19200
+// Switch the serial port to a different baud rate.
+// Note: this setting is not remembered across reboots.
+
+// ++addr 17
+// Set the address of the remote GPIB device.
+
+// ++read
+// Address the remote GPIB to talk, read from the device until EOI, then
+// print the result.
+
+// ++stream
+// Similar to ++read, but in an infinite loop.
+
+// Any string not beginning with "++" is sent to the remote GPIB device.
+
+// Commands are terminated with '\n' or '|'.
+
+
+// ----------------------------------------------------------------------------
 
 // The v1 board has to use a software serial port.
 #ifdef BOARDV1
@@ -75,18 +101,11 @@ Firmware history:
 #include <SoftwareSerial.h>
 #endif
 
-
 #include "buffer.h"
 #include "error.h"
-
-
-// --- Bit manipulation ---
-
-#define SET_BIT(ADDRESS, BITNUM)   (ADDRESS |= (1<<BITNUM))
-#define CLEAR_BIT(ADDRESS, BITNUM) (ADDRESS &= ~(1<<BITNUM))
-#define FLIP_BIT(ADDRESS, BITNUM)  (ADDRESS ^= (1<<BITNUM))
-// note: this returns a byte with the desired bit in its original position
-#define GET_BIT(ADDRESS, BITNUM)   (ADDRESS & (1<<BITNUM))
+#include "bitmanip.h"
+#include "hex.h"
+#include "parse.h"
 
 
 // --- Types ---
@@ -114,6 +133,20 @@ typedef enum {
 } gpib_line_t;
 
 
+// --- Global vars ---
+
+const uint8_t gpib_buffer_len = 128;
+uint8_t gpib_buffer_bytes[gpib_buffer_len];
+buffer_t gpib_buffer;
+
+const uint8_t serial_buffer_len = 128;
+uint8_t serial_buffer_bytes[serial_buffer_len];
+buffer_t serial_buffer;
+
+uint8_t self_gpib_address = 21; // By convention, the controller is typically address 21.
+int8_t remote_addr = -1;
+
+
 // --- Serial ---
 
 #ifdef BOARDV1
@@ -122,6 +155,8 @@ typedef enum {
 #define CTS_ARDUINO_PIN  3  // (Note: I ended up not using these flow-control pins)
 #define RTS_ARDUINO_PIN  4  // (Note: I ended up not using these flow-control pins)
 #endif
+
+const uint32_t default_baud = 9600;
 
 #ifdef SOFT_UART
 SoftwareSerial serial = SoftwareSerial(RX_ARDUINO_PIN, TX_ARDUINO_PIN);
@@ -151,13 +186,22 @@ int serial_read() {
     #endif    
 }
 
+void serial_begin(uint32_t baud_rate) {
+    #ifdef SOFT_UART
+        // Configure the serial pins
+        pinMode(RX_ARDUINO_PIN, INPUT);
+        pinMode(TX_ARDUINO_PIN, OUTPUT);
+        serial.begin(baud_rate);
+    #else
+        Serial.begin(baud_rate);
+    #endif
+}
+
 
 // --- GPIB implementation ---
 
 // See this excellent resource on how GPIB works:
 // http://www.pearl-hifi.com/06_Lit_Archive/15_Mfrs_Publications/20_HP_Agilent/HP_7470A/HP-IB_Tutorial_Description.pdf
-
-int8_t remote_addr = -1;
 
 arduino_pin_t gpib_arduino_pin_map(gpib_line_t line) {
     switch (line) {
@@ -450,7 +494,6 @@ void clear_all_interfaces() {
 #define TAD_BASE  0x40
 #define SAD_BASE  0x60
 
-uint8_t self_gpib_address = 21; // By convention, the controller is typically address 21.
 
 // "Device Listen Address": configure the device at the given address to be a listener.
 void LAD(uint8_t address) {
@@ -536,117 +579,11 @@ void settle() {
 
 // --- Command parsing ---
 
-
-boolean hex_to_nibble(char ch, uint8_t *out) {
-    switch (ch) {
-        case '0':
-            *out = 0x0;
-            return true;
-        case '1':
-            *out = 0x1;
-            return true;
-        case '2':
-            *out = 0x2;
-            return true;
-        case '3':
-            *out = 0x3;
-            return true;
-        case '4':
-            *out = 0x4;
-            return true;
-        case '5':
-            *out = 0x5;
-            return true;
-        case '6':
-            *out = 0x6;
-            return true;
-        case '7':
-            *out = 0x7;
-            return true;
-        case '8':
-            *out = 0x8;
-            return true;
-        case '9':
-            *out = 0x9;
-            return true;
-        case 'a':
-        case 'A':
-            *out = 0xA;
-            return true;
-        case 'b':
-        case 'B':
-            *out = 0xB;
-            return true;
-        case 'c':
-        case 'C':
-            *out = 0xC;
-            return true;
-        case 'd':
-        case 'D':
-            *out = 0xD;
-            return true;
-        case 'e':
-        case 'E':
-            *out = 0xE;
-            return true;
-        case 'f':
-        case 'F':
-            *out = 0xF;
-            return true;
-        default:
-            return false;
-    }
-}
-
-
-boolean hex_to_byte(char high, char low, uint8_t *out) {
-    // originally inspired by http://stackoverflow.com/a/12839870/558735
-
-    uint8_t high_bin = 0x0;
-    uint8_t low_bin = 0x0;
-    boolean ret;
-    
-    ret = hex_to_nibble(high, &high_bin);
-    if (ret == false) {
-        return ret;
-    }
-
-    ret = hex_to_nibble(low, &low_bin);
-    if (ret == false) {
-        return ret;
-    }
-
-    *out = (high_bin << 4) | low_bin;
-    return true;
-}
-
-
-void byte_to_hex(uint8_t data, char *buff) {
-    // originally inspired by http://stackoverflow.com/a/12839870/558735
- 
-    char map[16+1] = "0123456789ABCDEF";
-
-    uint8_t high_nibble = (data & 0xF0) >> 4;
-    *buff = map[high_nibble];
-    buff++;
-
-    uint8_t low_nibble = data & 0x0F;
-    *buff = map[low_nibble];
-    buff++;
-
-    *buff = '\0';
-}
-
-
-#define BUFF_LEN 127
-char buffer_bytes[BUFF_LEN];
-char_buffer_t buffer = { .len = BUFF_LEN, .bytes = buffer_bytes };
-
 // Read from serial until '\n', writing to a buffer.
-error_t read_serial_line(char_buffer_t *buffer) {
+error_t read_serial_line(buffer_t *buffer) {
 
     uint8_t num_chars_consumed = 0;
-    char *buff_ptr = buffer->bytes;
+    char *buff_ptr = buffer->str;
     boolean has_read_first_char = false;
 
     while (true) {
@@ -690,56 +627,6 @@ boolean is_sentinel(char ch) {
     return false;
 }
 
-
-bool parse_digit(char *ch, int8_t *out) {
-    switch (*ch) {
-        case '0':
-            *out = 0;
-            return true;
-        case '1':
-            *out = 1;
-            return true;
-        case '2':
-            *out = 2;
-            return true;
-        case '3':
-            *out = 3;
-            return true;
-        case '4':
-            *out = 4;
-            return true;
-        case '5':
-            *out = 5;
-            return true;
-        case '6':
-            *out = 6;
-            return true;
-        case '7':
-            *out = 7;
-            return true;
-        case '8':
-            *out = 8;
-            return true;
-        case '9':
-            *out = 9;
-            return true;
-        default:
-            return false;
-    }
-}
-
-
-bool parse_two_digits(char *ch, int8_t *out) {
-    int8_t digit1;
-    int8_t digit2;
-    if (parse_digit(ch, &digit1) && parse_digit(ch+1, &digit2)) {
-        *out = digit1 * 10 + digit2;
-        return true;
-    } else {
-        return false;
-    }
-}
-
     
 bool try_ver_cmd(char *buff) {
     
@@ -751,7 +638,25 @@ bool try_ver_cmd(char *buff) {
     return true;
 }
 
+
+bool try_baud_cmd(char *buff) {
     
+    if (strncmp(buff, "++baud ", strlen("++baud ")) != 0) {
+        return false;
+    }
+
+    buff += strlen("++baud ");
+
+    bool ret;
+    uint32_t baud;
+    ret = parse_uint32(buff, &baud);
+    if (ret == false) { return false; }
+
+    serial_begin(baud);
+    return true;
+}
+
+
 bool try_addr_cmd(char *buff, int8_t *addr) {
 
     if (strncmp(buff, "++addr ", strlen("++addr ")) != 0) {
@@ -760,13 +665,11 @@ bool try_addr_cmd(char *buff, int8_t *addr) {
 
     buff += strlen("++addr ");
 
-    if (strlen(buff) == 1) {
-        return parse_digit(buff, addr);
-    } else if (strlen(buff) == 2) {
-        return parse_two_digits(buff, addr);
-    } else {
-        return false;
-    }
+    uint8_t address = 0;
+    bool ret;
+    ret = parse_uint8(buff, &address);
+    *addr = (int8_t)address;
+    return ret;
 }
 
 
@@ -782,21 +685,17 @@ bool try_read_cmd(char *buff) {
 
     address_talker(remote_addr);
 
-    uint8_t buffer_size = 128;
-    uint8_t buffer_bytes[buffer_size];
-    uint8_buffer_t buffer = { .len = buffer_size, .bytes = buffer_bytes };
-
     bool is_eoi;
     bool ret;
-    for (uint8_t i = 0; i < buffer.len - 1; i++) {
-        ret = receive_byte(buffer.bytes + i, &is_eoi);
+    for (uint8_t i = 0; i < gpib_buffer.len - 1; i++) {
+        ret = receive_byte(gpib_buffer.bytes + i, &is_eoi);
         if (ret == false || is_eoi == true) {
-            buffer.bytes[i+1] = '\0';
+            gpib_buffer.bytes[i+1] = '\0';
             break;
         }
     }
 
-    serial_write_str((char*)(buffer.bytes));
+    serial_write_str(gpib_buffer.str);
 
     return ret;
 }
@@ -814,20 +713,17 @@ bool try_stream_cmd(char *buff) {
 
     address_talker(remote_addr);
 
-    while (true) {
-        uint8_t buffer_size = 128;
-        uint8_t buffer_bytes[buffer_size];
-        uint8_buffer_t buffer = { .len = buffer_size, .bytes = buffer_bytes };
+    while (true) {        
         bool is_eoi;
         bool ret;
-        for (uint8_t i = 0; i < buffer.len - 1; i++) {
-            ret = receive_byte(buffer.bytes + i, &is_eoi);
+        for (uint8_t i = 0; i < gpib_buffer.len - 1; i++) {
+            ret = receive_byte(gpib_buffer.bytes + i, &is_eoi);
             if (ret == false || is_eoi == true) {
-                buffer.bytes[i+1] = '\0';
+                gpib_buffer.bytes[i+1] = '\0';
                 break;
             }
         }
-        serial_write_str((char*)(buffer.bytes));
+        serial_write_str(gpib_buffer.str);
         if (ret == false) { return ret; }
         is_eoi = false;
     }
@@ -891,6 +787,7 @@ bool parse_and_run_prologix_style_cmd(char *buff) {
 
     if (strncmp(buff, "++", 2) == 0) {
         if (try_ver_cmd(buff)) { return true; }
+        if (try_baud_cmd(buff)) { return true; }
         if (try_addr_cmd(buff, &remote_addr)) { return true; }
         if (try_stream_cmd(buff)) { return true; }
         if (try_read_cmd(buff)) { return true; }
@@ -929,14 +826,13 @@ void print_error(error_t err) {
 // --- Main program ---
 
 void setup() {
-#ifdef SOFT_UART
-    // Configure the serial pins
-    pinMode(RX_ARDUINO_PIN, INPUT);
-    pinMode(TX_ARDUINO_PIN, OUTPUT);
-    serial.begin(9600);
-#else
-    Serial.begin(9600);
-#endif
+    serial_begin(default_baud);
+
+    gpib_buffer.len = gpib_buffer_len;
+    gpib_buffer.bytes = gpib_buffer_bytes;
+
+    serial_buffer.len = serial_buffer_len;
+    serial_buffer.bytes = serial_buffer_bytes;
 
     // Blink the built-in LED to show we are running.
     // (The Arduino bootloader can take up to 10 seconds before our program
@@ -964,14 +860,14 @@ void setup() {
 
 
 void loop() {
-    error_t err = read_serial_line(&buffer);
+    error_t err = read_serial_line(&serial_buffer);
 
     if (err != OK_NO_ERROR) {
         print_error(err);
         return;
     }
 
-    if (parse_and_run_prologix_style_cmd(buffer.bytes)) {
+    if (parse_and_run_prologix_style_cmd(serial_buffer.str)) {
         serial_write_str("ok\n");
     } else {
         serial_write_str("error\n");        

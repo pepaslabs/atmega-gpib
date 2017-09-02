@@ -1,6 +1,6 @@
 /*
   buffer.h
-  Copyright Jason Pepas (Pepas Labs, LLC)
+  Copyright 2017 Jason Pepas
   Released under the terms of the MIT License.  See http://opensource.org/licenses/MIT
 */
 
@@ -11,25 +11,18 @@
 #include <stdint.h>
 
 
-struct _char_buffer_t
+struct _buffer_t
 {
-  uint8_t len;
-  char *bytes;
+    uint8_t len;
+    union {
+        char *str;
+        uint8_t *bytes;  
+    };
 };
-typedef _char_buffer_t char_buffer_t;
+typedef _buffer_t buffer_t;
 
 
-struct _uint8_buffer_t
-{
-  uint8_t len;
-  uint8_t *bytes;
-};
-typedef _uint8_buffer_t uint8_buffer_t;
-
-
-void clear_char_buffer(char_buffer_t *buff);
-void clear_uint8_buffer(uint8_buffer_t *buff);
+void clear_buffer(buffer_t *buff);
 
 
 #endif
-
