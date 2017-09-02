@@ -1,4 +1,17 @@
-// ATmega328/Arduino -> GPIB pin mapping
+// Arduino firmware for the atmega-gpib project.
+// See https://github.com/pepaslabs/atmega-gpib
+
+// Copyright 2017 Jason Pepas
+// Released under the terms of the MIT License
+// See https://opensource.org/licenses/MIT
+
+
+// Uncomment one of these lines, depending upon which board you are using:
+//#define BOARDV1
+#define BOARDV2
+
+
+// ATmega328/Arduino -> GPIB pin mapping for the v2 board (using the MCP2221A)
 //
 //                       +------------\_/------------+
 //                      -|1  PC6 INT14   INT13 PC5 28|- A5     GPIB 11: ATN
@@ -17,8 +30,50 @@
 //   GPIB 1: DIO1    D8 -|14 PB0 INT0     INT1 PB1 15|- D9     GPIB 13: DIO5
 //                       +---------------------------+
 
-// See this excellent resource on how GPIB works:
-// http://www.pearl-hifi.com/06_Lit_Archive/15_Mfrs_Publications/20_HP_Agilent/HP_7470A/HP-IB_Tutorial_Description.pdf
+
+// ATmega328/Arduino -> GPIB pin mapping for the v1 board (using the FT230X)
+//
+// NOTE: I got the RX/TX pins backwards on this board, which is why it uses
+// a software serial port (and can't be updated via bootloader).
+// Also, REN used D13, which conflicted with the built-in Arduino LED.
+//
+//                       +------------\_/------------+
+//                      -|1  PC6 INT14   INT13 PC5 28|- A5     GPIB 11: ATN
+//  FT230X 4: RX     D0 -|2  PD0 INT16   INT12 PC4 27|- A4     GPIB 10: SRQ
+//  FT230X 1: TX     D1 -|3  PD1 INT17   INT11 PC3 26|- A3     GPIB 9:  IFC
+//  FT230X 6: CTS    D2 -|4  PD2 INT18   INT10 PC2 25|- A2     GPIB 8:  NDAC
+//  FT230X 2: RTS    D3 -|5  PD3 INT19    INT9 PC1 24|- A1     GPIB 7:  NRFD
+//                   D4 -|6  PD4 INT20    INT8 PC0 23|- A0     GPIB 6:  DAV
+//                  Vcc -|7                        22|- GND
+//                  GND -|8                        21|- AREF
+//                      -|9  PB6 INT6              20|- AVcc
+//   GPIB 5: EOI        -|10 PB7 INT7     INT5 PB5 19|- D13    GPIB 17: REN
+//   GPIB 4: DIO4    D5 -|11 PD5 INT21    INT4 PB4 18|- D12    GPIB 16: DIO8
+//   GPIB 3: DIO3    D6 -|12 PD6 INT22    INT3 PB3 17|- D11    GPIB 15: DIO7
+//   GPIB 2: DIO2    D7 -|13 PD7 INT23    INT2 PB2 16|- D10    GPIB 14: DIO6
+//   GPIB 1: DIO1    D8 -|14 PD8 INT0     INT1 PB1 15|- D9     GPIB 13: DIO5
+//                       +---------------------------+
+
+
+#define FIRMWARE_VERSION "2.0.1"
+
+/*
+Firmware history:
+- 2.0.1: Adding "++ver" command.  Adding support for v1 and v2 boards.
+*/
+
+
+// The v1 board has to use a software serial port.
+#ifdef BOARDV1
+
+#define SOFT_UART
+
+#endif
+
+
+#ifdef SOFT_UART
+#include <SoftwareSerial.h>
+#endif
 
 
 #include "buffer.h"
@@ -58,6 +113,52 @@ typedef enum {
     DIO8
 } gpib_line_t;
 
+
+// --- Serial ---
+
+#ifdef BOARDV1
+#define RX_ARDUINO_PIN   1  // connect to FT230X TX (pin 1)
+#define TX_ARDUINO_PIN   0  // connect to FT230X RX (pin 4)
+#define CTS_ARDUINO_PIN  3  // (Note: I ended up not using these flow-control pins)
+#define RTS_ARDUINO_PIN  4  // (Note: I ended up not using these flow-control pins)
+#endif
+
+#ifdef SOFT_UART
+SoftwareSerial serial = SoftwareSerial(RX_ARDUINO_PIN, TX_ARDUINO_PIN);
+#endif
+
+int serial_available() {
+    #ifdef SOFT_UART
+        return serial.available();
+    #else
+        return Serial.available();
+    #endif   
+}
+
+size_t serial_write_str(const char *str) {
+    #ifdef SOFT_UART
+        return serial.write(str);
+    #else
+        return Serial.write(str);
+    #endif
+}
+
+int serial_read() {
+    #ifdef SOFT_UART
+        return serial.read();
+    #else
+        return Serial.read();
+    #endif    
+}
+
+
+// --- GPIB implementation ---
+
+// See this excellent resource on how GPIB works:
+// http://www.pearl-hifi.com/06_Lit_Archive/15_Mfrs_Publications/20_HP_Agilent/HP_7470A/HP-IB_Tutorial_Description.pdf
+
+int8_t remote_addr = -1;
+
 arduino_pin_t gpib_arduino_pin_map(gpib_line_t line) {
     switch (line) {
         case DAV:
@@ -73,9 +174,15 @@ arduino_pin_t gpib_arduino_pin_map(gpib_line_t line) {
         case SRQ:
             return A4;
         case REN:
-            return 3;
+            #ifdef BOARDV1
+                return 13;
+            #elif defined BOARDV2
+                return 3;
+            #endif
         case EOI:
-            return 4;
+            #ifdef BOARDV2
+                return 4;
+            #endif
         case DIO1:
             return 8;
         case DIO2:
@@ -97,89 +204,54 @@ arduino_pin_t gpib_arduino_pin_map(gpib_line_t line) {
     }
 }
 
+
 void assert_gpib_line(gpib_line_t line) {
+
+#ifdef BOARDV1
+    if (line == EOI) {
+        // Configure pin as output
+        SET_BIT(DDRB, DDB7);        
+        // Set the pin low
+        CLEAR_BIT(PORTB, PB7);
+        return;
+    }
+#endif
+
     assert_arduino_pin(gpib_arduino_pin_map(line));
 }
 
+
 void unassert_gpib_line(gpib_line_t line) {
+
+#ifdef BOARDV1
+    if (line == EOI) {
+        // Configure pin as input
+        CLEAR_BIT(DDRB, DDB7);
+        // Enable the built-in pull-up resistor
+        SET_BIT(PORTB, PB7);
+        return;
+    }
+#endif
+
     unassert_arduino_pin(gpib_arduino_pin_map(line));
 }
 
+
 bool check_gpib_line(gpib_line_t line) {
+
+    #ifdef BOARDV1
+    if (line == EOI) {
+        // Configure pin as input
+        CLEAR_BIT(DDRB, DDB7);
+        // Enable the built-in pull-up resistor
+        SET_BIT(PORTB, PB7);
+        return GET_BIT(PINB, PINB7) == 0 ? true : false;
+    }
+    #endif
+
     return digitalRead(gpib_arduino_pin_map(line)) == LOW ? true : false;
 }
 
-
-// --- TTL Serial pin mapping ---
-
-#define RX_ARDUINO_PIN   0  // connect to MCP2221 TX (14-DIP pin 6)
-#define TX_ARDUINO_PIN   1  // connect to MCP2221 RX (14-DIP pin 5)
-
-
-// --- global vars ---
-
-int8_t remote_addr = -1;
-
-
-// --- Data bus ---
-
-void gpib_set_data_bus(uint8_t data) {
-    set_gpib_data_bus_mode(OUTPUT);
-    uint8_t inverted_data = ~data;
-    for (uint8_t offset = 0; offset < 8; offset++) {
-        gpib_line_t line = (gpib_line_t)(DIO1 + offset);
-        arduino_pin_t pin = gpib_arduino_pin_map(line);
-        uint8_t bit_index = 0 + offset;
-        uint8_t value = GET_BIT(inverted_data, bit_index) ? HIGH : LOW;
-        digitalWrite(pin, value);
-    }
-}
-
-uint8_t gpib_get_data_bus() {
-    set_gpib_data_bus_mode(INPUT_PULLUP);
-    uint8_t data = 0x0;
-    for (uint8_t offset = 0; offset < 8; offset++) {
-        gpib_line_t line = (gpib_line_t)(DIO1 + offset);
-        arduino_pin_t pin = gpib_arduino_pin_map(line);
-        uint8_t bit_index = 0 + offset;
-        digitalRead(pin) ? CLEAR_BIT(data, bit_index) : SET_BIT(data, bit_index);
-    }
-    return data;
-}
-
-void gpib_release_data_bus() {
-    set_gpib_data_bus_mode(INPUT_PULLUP);
-}
-
-void set_gpib_data_bus_mode(arduino_pinmode_t mode) {
-    for (uint8_t offset = 0; offset < 8; offset++) {
-        gpib_line_t line = (gpib_line_t)(DIO1 + offset);
-        arduino_pin_t pin = gpib_arduino_pin_map(line);
-        pinMode(pin, mode);
-    }
-}
-
-
-// --- Arduino pin driver ---
-
-void assert_arduino_pin(arduino_pin_t pin) {
-    pinMode(pin, OUTPUT);
-    digitalWrite(pin, LOW);
-}
-
-void unassert_arduino_pin(arduino_pin_t pin) {
-  pinMode(pin, INPUT_PULLUP);
-}
-
-
-// --- Misc utils functions ---
-
-void settle() {
-    delayMicroseconds(150);
-}
-
-
-// --- GPIB implementation ---
 
 bool wait_for_line_to_assert(gpib_line_t line) {
     // this will time out after 6.5535 seconds.
@@ -198,6 +270,7 @@ bool wait_for_line_to_assert(gpib_line_t line) {
     return false;
 }
 
+
 bool wait_for_line_to_unassert(gpib_line_t line) {
     // this will time out after 6.5535 seconds.
     for (uint16_t i = 0; i < UINT16_MAX; i++) {
@@ -213,6 +286,51 @@ bool wait_for_line_to_unassert(gpib_line_t line) {
     // timeout!
     return false;
 }
+
+
+// --- GPIBG data bus functions ---
+
+void gpib_set_data_bus(uint8_t data) {
+    set_gpib_data_bus_mode(OUTPUT);
+    uint8_t inverted_data = ~data;
+    for (uint8_t offset = 0; offset < 8; offset++) {
+        gpib_line_t line = (gpib_line_t)(DIO1 + offset);
+        arduino_pin_t pin = gpib_arduino_pin_map(line);
+        uint8_t bit_index = 0 + offset;
+        uint8_t value = GET_BIT(inverted_data, bit_index) ? HIGH : LOW;
+        digitalWrite(pin, value);
+    }
+}
+
+
+uint8_t gpib_get_data_bus() {
+    set_gpib_data_bus_mode(INPUT_PULLUP);
+    uint8_t data = 0x0;
+    for (uint8_t offset = 0; offset < 8; offset++) {
+        gpib_line_t line = (gpib_line_t)(DIO1 + offset);
+        arduino_pin_t pin = gpib_arduino_pin_map(line);
+        uint8_t bit_index = 0 + offset;
+        digitalRead(pin) ? CLEAR_BIT(data, bit_index) : SET_BIT(data, bit_index);
+    }
+    return data;
+}
+
+
+void gpib_release_data_bus() {
+    set_gpib_data_bus_mode(INPUT_PULLUP);
+}
+
+
+void set_gpib_data_bus_mode(arduino_pinmode_t mode) {
+    for (uint8_t offset = 0; offset < 8; offset++) {
+        gpib_line_t line = (gpib_line_t)(DIO1 + offset);
+        arduino_pin_t pin = gpib_arduino_pin_map(line);
+        pinMode(pin, mode);
+    }
+}
+
+
+// --- GPIB communication functions ---
 
 bool send_byte(uint8_t data) {
     bool ret;
@@ -244,6 +362,7 @@ bool send_byte(uint8_t data) {
     return true;
 }
 
+
 bool send_last_byte(byte data) {
     assert_gpib_line(EOI);
     if (send_byte(data) == false) { return false; }
@@ -252,7 +371,8 @@ bool send_last_byte(byte data) {
     return true;
 }
 
-bool send_str(char *buff) {
+
+bool send_str(const char *buff) {
     if (remote_addr < 0) {
         return false;        
     }
@@ -270,6 +390,7 @@ bool send_str(char *buff) {
 
     return true;
 }
+
 
 bool receive_byte(uint8_t *data, bool *eoi) {
     bool ret;
@@ -335,7 +456,7 @@ uint8_t self_gpib_address = 21; // By convention, the controller is typically ad
 void LAD(uint8_t address) {
     send_byte(LAD_BASE + address);
 }
-
+               
 // "Device Talk Address": configure the device at the given address to be a talker.
 void TAD(uint8_t address) {
     send_byte(TAD_BASE + address);
@@ -390,6 +511,26 @@ void address_talker(uint8_t address) {
 
     unassert_gpib_line(ATN);
     settle();
+}
+
+
+// --- Arduino pin driver ---
+
+void assert_arduino_pin(arduino_pin_t pin) {
+    pinMode(pin, OUTPUT);
+    digitalWrite(pin, LOW);
+}
+
+
+void unassert_arduino_pin(arduino_pin_t pin) {
+    pinMode(pin, INPUT_PULLUP);
+}
+
+
+// --- Misc utils functions ---
+
+void settle() {
+    delayMicroseconds(150);
 }
 
 
@@ -510,11 +651,11 @@ error_t read_serial_line(char_buffer_t *buffer) {
 
     while (true) {
         // busy-wait for serial data to become available
-        while (Serial.available() == 0) {
+        while (serial_available() == 0) {
             continue;
         }
 
-        *buff_ptr = Serial.read();
+        *buff_ptr = serial_read();
 
         // throw away any leading \n \r garbage leftover from the previous line
         if (is_sentinel(*buff_ptr) && (has_read_first_char == false)) {
@@ -537,6 +678,7 @@ error_t read_serial_line(char_buffer_t *buffer) {
     }
 }
 
+
 const char *sentinels = "\r\n|";
 
 boolean is_sentinel(char ch) {
@@ -547,6 +689,7 @@ boolean is_sentinel(char ch) {
     }
     return false;
 }
+
 
 bool parse_digit(char *ch, int8_t *out) {
     switch (*ch) {
@@ -585,6 +728,7 @@ bool parse_digit(char *ch, int8_t *out) {
     }
 }
 
+
 bool parse_two_digits(char *ch, int8_t *out) {
     int8_t digit1;
     int8_t digit2;
@@ -596,6 +740,18 @@ bool parse_two_digits(char *ch, int8_t *out) {
     }
 }
 
+    
+bool try_ver_cmd(char *buff) {
+    
+    if (strncmp(buff, "++ver", strlen("++ver")) != 0) {
+        return false;
+    }
+
+    serial_write_str(FIRMWARE_VERSION);
+    return true;
+}
+
+    
 bool try_addr_cmd(char *buff, int8_t *addr) {
 
     if (strncmp(buff, "++addr ", strlen("++addr ")) != 0) {
@@ -612,6 +768,7 @@ bool try_addr_cmd(char *buff, int8_t *addr) {
         return false;
     }
 }
+
 
 bool try_read_cmd(char *buff) {
 
@@ -639,10 +796,11 @@ bool try_read_cmd(char *buff) {
         }
     }
 
-    Serial.write((char*)(buffer.bytes));
+    serial_write_str((char*)(buffer.bytes));
 
     return ret;
 }
+
 
 bool try_stream_cmd(char *buff) {
 
@@ -669,7 +827,7 @@ bool try_stream_cmd(char *buff) {
                 break;
             }
         }
-        Serial.write((char*)(buffer.bytes));
+        serial_write_str((char*)(buffer.bytes));
         if (ret == false) { return ret; }
         is_eoi = false;
     }
@@ -677,12 +835,66 @@ bool try_stream_cmd(char *buff) {
     return true;
 }
 
+
+bool try_eevblog_cmd(char *buff) {
+
+    if (strncmp(buff, "++eevblog", strlen("++eevblog")) != 0) {
+        return false;
+    }
+
+    if (remote_addr < 0) {
+        return false;        
+    }
+
+    while (true) {
+        send_str("D@@@@@@@@@@X");
+        delay(250);
+        send_str("DG@@@@@@@@@X");
+        delay(250);
+        send_str("DOG@@@@@@@@X");
+        delay(250);
+        send_str("DLOG@@@@@@@X");
+        delay(250);
+        send_str("DBLOG@@@@@@X");
+        delay(250);
+        send_str("DVBLOG@@@@@X");
+        delay(250);
+        send_str("DEVBLOG@@@@X");
+        delay(250);
+        send_str("DEEVBLOG@@@X");
+        delay(250);
+        send_str("D@EEVBLOG@@X");
+        delay(250);
+        send_str("D@@EEVBLOG@X");
+        delay(250);
+        send_str("D@@@EEVBLOGX");
+        delay(250);
+        send_str("D@@@@EEVBLOX");
+        delay(250);
+        send_str("D@@@@@EEVBLX");
+        delay(250);
+        send_str("D@@@@@@EEVBX");
+        delay(250);
+        send_str("D@@@@@@@EEVX");
+        delay(250);
+        send_str("D@@@@@@@@EEX");
+        delay(250);
+        send_str("D@@@@@@@@@EX");
+        delay(250);
+        send_str("D@@@@@@@@@@X");
+        delay(250);
+    }
+}
+
+
 bool parse_and_run_prologix_style_cmd(char *buff) {
 
     if (strncmp(buff, "++", 2) == 0) {
+        if (try_ver_cmd(buff)) { return true; }
         if (try_addr_cmd(buff, &remote_addr)) { return true; }
         if (try_stream_cmd(buff)) { return true; }
         if (try_read_cmd(buff)) { return true; }
+        if (try_eevblog_cmd(buff)) { return true; }
     } else {
         return send_str(buff);
     }
@@ -690,24 +902,25 @@ bool parse_and_run_prologix_style_cmd(char *buff) {
     return false;
 }
 
+
 void print_error(error_t err) {
     switch (err) {
         case OK_NO_ERROR:
             return;
         case ERROR_BUFFER_FILLED_UP_BEFORE_SENTINEL_REACHED:
-            Serial.write("Error: buffer filled up before sentinel reached.\n");
+            serial_write_str("Error: buffer filled up before sentinel reached.\n");
             break;
         case ERROR_UNKNOWN_COMMAND:
-            Serial.write("Error: unknown command.\n");
+            serial_write_str("Error: unknown command.\n");
             break;
         case ERROR_MALFORMED_COMMAND:
-            Serial.write("Error: malformed command.\n");
+            serial_write_str("Error: malformed command.\n");
             break;
         case ERROR_UNKNOWN_BUS_LINE:
-            Serial.write("Error: unknown bus line.\n");
+            serial_write_str("Error: unknown bus line.\n");
             break;
         case ERROR_INVALID_HEX:
-            Serial.write("Error: invalid hex value.\n");
+            serial_write_str("Error: invalid hex value.\n");
             break;
     }
 }
@@ -716,9 +929,18 @@ void print_error(error_t err) {
 // --- Main program ---
 
 void setup() {
+#ifdef SOFT_UART
+    // Configure the serial pins
+    pinMode(RX_ARDUINO_PIN, INPUT);
+    pinMode(TX_ARDUINO_PIN, OUTPUT);
+    serial.begin(9600);
+#else
     Serial.begin(9600);
+#endif
 
     // Blink the built-in LED to show we are running.
+    // (The Arduino bootloader can take up to 10 seconds before our program
+    // start running, so this blink is a useful indicator.)
     pinMode(13, OUTPUT);
     digitalWrite(13, HIGH);
     delay(100);
@@ -740,6 +962,7 @@ void setup() {
     settle();
 }
 
+
 void loop() {
     error_t err = read_serial_line(&buffer);
 
@@ -749,9 +972,9 @@ void loop() {
     }
 
     if (parse_and_run_prologix_style_cmd(buffer.bytes)) {
-        Serial.write("ok\n");
+        serial_write_str("ok\n");
     } else {
-        Serial.write("error\n");        
+        serial_write_str("error\n");        
     }
 }
 
@@ -767,8 +990,14 @@ void loop() {
 // Download this Arduino hardware configuration:
 // https://www.arduino.cc/en/uploads/Tutorial/breadboard-1-6-x.zip
 // Create a "hardware" folder in your Arduino folder and move the breadboard folder there.
-// For example, on my linux computer, the "boards.txt" file sits at this path:
-// /home/cell/Arduino/hardware/breadboard/avr/boards.txt
+// On my Linux computer, the "boards.txt" file sits at this path:
+//  /home/cell/Arduino/hardware/breadboard/avr/boards.txt
+// On my Mac, the "boards.txt" file sits at this path:
+//  /Users/cell/Documents/Arduino/hardware/breadboard/avr/boards.txt
+// Note: on Mac, Arduino complained about not being able to find avrdude.conf.
+// I resolved this by creating a symlink:
+//  cd /Users/cell/Documents/Arduino/hardware/breadboard/avr
+//  ln -s /Applications/Arduino.app/Contents/Java/hardware/tools/avr/etc/avrdude.conf
 
 // Note: if you get a "permission denied" error when trying to use the USBTiny programmer
 // from linux, do the following:
