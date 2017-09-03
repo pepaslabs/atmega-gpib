@@ -111,6 +111,8 @@ Firmware history:
 // --- Types ---
 
 typedef uint8_t arduino_pin_t;
+const arduino_pin_t NULL_ARDUINO_PIN = UINT8_MAX;
+
 typedef uint8_t arduino_pinmode_t;
 
 typedef enum {
@@ -132,31 +134,70 @@ typedef enum {
     DIO8
 } gpib_line_t;
 
+typedef uint8_t gpib_addr_t;
+const gpib_addr_t NULL_GPIB_ADDR = UINT8_MAX;
+
+typedef uint32_t baud_rate_t;
+const baud_rate_t DEFAULT_BAUD = 9600;
+
+enum _cmd_name_t {
+    VER_CMD,
+    ADDR_CMD,
+    BAUD_CMD,
+    READ_CMD,
+    STREAM_CMD
+};
+typedef _cmd_name_t cmd_name_t;
+
+struct _addr_cmd_params_t {
+    gpib_addr_t addr;
+};
+typedef _addr_cmd_params_t addr_cmd_params_t;
+
+struct _baud_cmd_params_t {
+    baud_rate_t baud_rate;
+};
+typedef _baud_cmd_params_t baud_cmd_params_t;
+
+struct _command_t {
+    cmd_name_t name;
+    union {
+        addr_cmd_params_t addr_params;
+        baud_cmd_params_t baud_params;
+    };
+};
+typedef _command_t command_t;
 
 // --- Global vars ---
 
-const uint8_t gpib_buffer_len = 128;
-uint8_t gpib_buffer_bytes[gpib_buffer_len];
-buffer_t gpib_buffer;
+// Note: I'm using a bit of Hungarian notation here: G_ indicates a global var.
 
-const uint8_t serial_buffer_len = 128;
-uint8_t serial_buffer_bytes[serial_buffer_len];
-buffer_t serial_buffer;
+const uint8_t G_GPIB_BUFFER_LEN = 128;
+uint8_t G_gpib_buffer_bytes[G_GPIB_BUFFER_LEN];
+buffer_t G_gpib_buffer;
 
-uint8_t self_gpib_address = 21; // By convention, the controller is typically address 21.
-int8_t remote_addr = -1;
+const uint8_t G_SERIAL_BUFFER_LEN = 128;
+uint8_t G_serial_buffer_bytes[G_SERIAL_BUFFER_LEN];
+buffer_t G_serial_buffer;
 
+gpib_addr_t G_self_gpib_addr = 21; // By convention, the controller is typically address 21.
+gpib_addr_t G_remote_gpib_addr = NULL_GPIB_ADDR;
+
+command_t G_cmd0;
+command_t G_cmd1;
+
+command_t *G_current_cmd;
+command_t *G_next_cmd;
 
 // --- Serial ---
 
 #ifdef BOARDV1
-#define RX_ARDUINO_PIN   1  // connect to FT230X TX (pin 1)
-#define TX_ARDUINO_PIN   0  // connect to FT230X RX (pin 4)
-#define CTS_ARDUINO_PIN  3  // (Note: I ended up not using these flow-control pins)
-#define RTS_ARDUINO_PIN  4  // (Note: I ended up not using these flow-control pins)
+const arduino_pin_t RX_ARDUINO_PIN = 1;   // connect to FT230X TX (pin 1)
+const arduino_pin_t TX_ARDUINO_PIN = 0;   // connect to FT230X RX (pin 4)
+const arduino_pin_t CTS_ARDUINO_PIN = 3;  // (Note: I ended up not using these flow-control pins)
+const arduino_pin_t RTS_ARDUINO_PIN = 4;  // (Note: I ended up not using these flow-control pins)
 #endif
 
-const uint32_t default_baud = 9600;
 
 #ifdef SOFT_UART
 SoftwareSerial serial = SoftwareSerial(RX_ARDUINO_PIN, TX_ARDUINO_PIN);
@@ -186,7 +227,7 @@ int serial_read() {
     #endif    
 }
 
-void serial_begin(uint32_t baud_rate) {
+void serial_begin(baud_rate_t baud_rate) {
     #ifdef SOFT_UART
         // Configure the serial pins
         pinMode(RX_ARDUINO_PIN, INPUT);
@@ -244,7 +285,7 @@ arduino_pin_t gpib_arduino_pin_map(gpib_line_t line) {
         case DIO8:
             return 12;
         default:
-            return 255;
+            return NULL_ARDUINO_PIN;
     }
 }
 
@@ -332,7 +373,7 @@ bool wait_for_line_to_unassert(gpib_line_t line) {
 }
 
 
-// --- GPIBG data bus functions ---
+// --- GPIB data bus functions ---
 
 void gpib_set_data_bus(uint8_t data) {
     set_gpib_data_bus_mode(OUTPUT);
@@ -416,12 +457,12 @@ bool send_last_byte(byte data) {
 }
 
 
-bool send_str(const char *buff) {
-    if (remote_addr < 0) {
+bool send_str(const char *buff, gpib_addr_t addr) {
+    if (addr == NULL_GPIB_ADDR) {
         return false;        
     }
 
-    address_listener(remote_addr);
+    address_listener(addr);
 
     size_t len = strlen(buff);
     for (size_t i = 0; i < len; i++) {
@@ -522,7 +563,7 @@ void UNT() {
 
 
 // Address a remote device to listen.
-void address_listener(uint8_t address) {
+void address_listener(gpib_addr_t address) {
     assert_gpib_line(REN);
     settle();
 
@@ -532,7 +573,7 @@ void address_listener(uint8_t address) {
     UNL();
     UNT();
     LAD(address);
-    TAD(self_gpib_address);
+    TAD(G_self_gpib_addr);
 
     unassert_gpib_line(ATN);
     settle();
@@ -540,7 +581,7 @@ void address_listener(uint8_t address) {
 
 
 // Address a remote device to talk.
-void address_talker(uint8_t address) {
+void address_talker(gpib_addr_t address) {
     assert_gpib_line(REN);
     settle();
 
@@ -549,7 +590,7 @@ void address_talker(uint8_t address) {
 
     UNL();
     UNT();
-    LAD(self_gpib_address);
+    LAD(G_self_gpib_addr);
     TAD(address);
 
     unassert_gpib_line(ATN);
@@ -627,103 +668,168 @@ boolean is_sentinel(char ch) {
     return false;
 }
 
-    
-bool try_ver_cmd(char *buff) {
-    
-    if (strncmp(buff, "++ver", strlen("++ver")) != 0) {
+// ---
+
+// Try to parse the buffer using all known command parsers.
+// If parsing was successful, cmd_out is populated and true is returned.
+bool parse_cmd(char *buff, command_t *cmd_out) {
+    if (parse_ver_cmd(buff)) {
+        cmd_out->name = VER_CMD;
+        return true;
+    } else if (parse_addr_cmd(buff, &(cmd_out->addr_params))) {
+        cmd_out->name = ADDR_CMD;
+        return true;
+    } else if (parse_baud_cmd(buff, &(cmd_out->baud_params))) {
+        cmd_out->name = BAUD_CMD;
+        return true;
+    } else if (parse_read_cmd(buff)) {
+        cmd_out->name = READ_CMD;
+        return true;
+    } else if (parse_stream_cmd(buff)) {
+        cmd_out->name = STREAM_CMD;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+// Try to parse the buffer as a ++ver command.
+// Returns true if parsing was successful.
+bool parse_ver_cmd(char *buff) {
+    const char *cmd_pattern = "++ver";
+    return strncmp(buff, cmd_pattern, strlen(cmd_pattern) == 0);
+}
+
+// Try to parse the buffer as a ++addr command.
+// If parsing was successful, params_out is populated and true is returned.
+bool parse_addr_cmd(char *buff, addr_cmd_params_t *params_out) {
+    const char *cmd_pattern = "++addr ";    
+    if (strncmp(buff, cmd_pattern, strlen(cmd_pattern)) != 0) {
         return false;
     }
 
-    serial_write_str(FIRMWARE_VERSION);
+    buff += strlen(cmd_pattern);
+
+    gpib_addr_t addr = 0;
+    bool ret;
+    ret = parse_uint8(buff, &addr);
+    if (ret == false) {
+        return false;
+    }
+
+    params_out->addr = addr;
     return true;
 }
 
-
-bool try_baud_cmd(char *buff) {
-    
-    if (strncmp(buff, "++baud ", strlen("++baud ")) != 0) {
+// Try to parse the buffer as a ++baud command.
+// If parsing was successful, params_out is populated and true is returned.
+bool parse_baud_cmd(char *buff, baud_cmd_params_t *params_out) {
+    const char *cmd_pattern = "++baud ";
+    if (strncmp(buff, cmd_pattern, strlen(cmd_pattern)) != 0) {
         return false;
     }
 
-    buff += strlen("++baud ");
+    buff += strlen(cmd_pattern);
 
+    baud_rate_t baud;
     bool ret;
-    uint32_t baud;
     ret = parse_uint32(buff, &baud);
-    if (ret == false) { return false; }
+    if (ret == false) {
+        return false;
+    }
 
-    serial_begin(baud);
+    params_out->baud_rate = baud;
     return true;
 }
 
+// Try to parse the buffer as a ++read command.
+// Returns true if parsing was successful.
+bool parse_read_cmd(char *buff) {
+    const char *cmd_pattern = "++read";
+    return strncmp(buff, cmd_pattern, strlen(cmd_pattern) == 0);
+}
 
-bool try_addr_cmd(char *buff, int8_t *addr) {
-
-    if (strncmp(buff, "++addr ", strlen("++addr ")) != 0) {
-        return false;
-    }
-
-    buff += strlen("++addr ");
-
-    uint8_t address = 0;
-    bool ret;
-    ret = parse_uint8(buff, &address);
-    *addr = (int8_t)address;
-    return ret;
+// Try to parse the buffer as a ++stream command.
+// Returns true if parsing was successful.
+bool parse_stream_cmd(char *buff) {
+    const char *cmd_pattern = "++stream";
+    return strncmp(buff, cmd_pattern, strlen(cmd_pattern) == 0);
 }
 
 
-bool try_read_cmd(char *buff) {
+// ---
 
-    if (strncmp(buff, "++read", strlen("++read")) != 0) {
+bool run_cmd(command_t *cmd) {
+    switch (cmd->name) {
+        case VER_CMD:
+            run_ver_cmd();
+        case ADDR_CMD:
+            run_addr_cmd(&(cmd->addr_params));
+        case BAUD_CMD:
+            run_baud_cmd(&(cmd->baud_params));
+        case READ_CMD:
+            run_read_cmd(G_remote_gpib_addr);
+        case STREAM_CMD:
+            run_stream_cmd(G_remote_gpib_addr);
+        default:
+            return false;
+    }
+}
+
+void run_ver_cmd() {
+    serial_write_str(FIRMWARE_VERSION);
+}
+
+void run_addr_cmd(addr_cmd_params_t *params) {
+    G_remote_gpib_addr = params->addr;
+}
+
+void run_baud_cmd(baud_cmd_params_t *params) {
+    serial_begin(params->baud_rate);
+}
+
+bool run_read_cmd(gpib_addr_t addr) {
+
+    if (addr == NULL_GPIB_ADDR) {
         return false;
     }
 
-    if (remote_addr < 0) {
-        return false;        
-    }
-
-    address_talker(remote_addr);
+    address_talker(addr);
 
     bool is_eoi;
     bool ret;
-    for (uint8_t i = 0; i < gpib_buffer.len - 1; i++) {
-        ret = receive_byte(gpib_buffer.bytes + i, &is_eoi);
+    for (uint8_t i = 0; i < G_gpib_buffer.len - 1; i++) {
+        ret = receive_byte(G_gpib_buffer.bytes + i, &is_eoi);
         if (ret == false || is_eoi == true) {
-            gpib_buffer.bytes[i+1] = '\0';
+            G_gpib_buffer.bytes[i+1] = '\0';
             break;
         }
     }
 
-    serial_write_str(gpib_buffer.str);
+    serial_write_str(G_gpib_buffer.str);
 
     return ret;
 }
 
+bool run_stream_cmd(gpib_addr_t addr) {
 
-bool try_stream_cmd(char *buff) {
-
-    if (strncmp(buff, "++stream", strlen("++stream")) != 0) {
+    if (addr == NULL_GPIB_ADDR) {
         return false;
     }
 
-    if (remote_addr < 0) {
-        return false;        
-    }
-
-    address_talker(remote_addr);
+    address_talker(addr);
 
     while (true) {        
         bool is_eoi;
         bool ret;
-        for (uint8_t i = 0; i < gpib_buffer.len - 1; i++) {
-            ret = receive_byte(gpib_buffer.bytes + i, &is_eoi);
+        for (uint8_t i = 0; i < G_gpib_buffer.len - 1; i++) {
+            ret = receive_byte(G_gpib_buffer.bytes + i, &is_eoi);
             if (ret == false || is_eoi == true) {
-                gpib_buffer.bytes[i+1] = '\0';
+                G_gpib_buffer.bytes[i+1] = '\0';
                 break;
             }
         }
-        serial_write_str(gpib_buffer.str);
+        serial_write_str(G_gpib_buffer.str);
         if (ret == false) { return ret; }
         is_eoi = false;
     }
@@ -731,74 +837,33 @@ bool try_stream_cmd(char *buff) {
     return true;
 }
 
+// ---
 
-bool try_eevblog_cmd(char *buff) {
-
-    if (strncmp(buff, "++eevblog", strlen("++eevblog")) != 0) {
-        return false;
-    }
-
-    if (remote_addr < 0) {
-        return false;        
-    }
-
-    while (true) {
-        send_str("D@@@@@@@@@@X");
-        delay(250);
-        send_str("DG@@@@@@@@@X");
-        delay(250);
-        send_str("DOG@@@@@@@@X");
-        delay(250);
-        send_str("DLOG@@@@@@@X");
-        delay(250);
-        send_str("DBLOG@@@@@@X");
-        delay(250);
-        send_str("DVBLOG@@@@@X");
-        delay(250);
-        send_str("DEVBLOG@@@@X");
-        delay(250);
-        send_str("DEEVBLOG@@@X");
-        delay(250);
-        send_str("D@EEVBLOG@@X");
-        delay(250);
-        send_str("D@@EEVBLOG@X");
-        delay(250);
-        send_str("D@@@EEVBLOGX");
-        delay(250);
-        send_str("D@@@@EEVBLOX");
-        delay(250);
-        send_str("D@@@@@EEVBLX");
-        delay(250);
-        send_str("D@@@@@@EEVBX");
-        delay(250);
-        send_str("D@@@@@@@EEVX");
-        delay(250);
-        send_str("D@@@@@@@@EEX");
-        delay(250);
-        send_str("D@@@@@@@@@EX");
-        delay(250);
-        send_str("D@@@@@@@@@@X");
-        delay(250);
+void swap_cmd_pointers() {
+    if (G_next_cmd == &G_cmd0) {
+        G_current_cmd = &G_cmd0;
+        G_next_cmd = &G_cmd1;
+    } else {
+        G_current_cmd = &G_cmd1;
+        G_next_cmd = &G_cmd0;
     }
 }
-
 
 bool parse_and_run_prologix_style_cmd(char *buff) {
 
     if (strncmp(buff, "++", 2) == 0) {
-        if (try_ver_cmd(buff)) { return true; }
-        if (try_baud_cmd(buff)) { return true; }
-        if (try_addr_cmd(buff, &remote_addr)) { return true; }
-        if (try_stream_cmd(buff)) { return true; }
-        if (try_read_cmd(buff)) { return true; }
-        if (try_eevblog_cmd(buff)) { return true; }
+        if (parse_cmd(buff, G_next_cmd) == false) {
+            return false;
+        }
+
+        swap_cmd_pointers();
+        return run_cmd(G_current_cmd);
     } else {
-        return send_str(buff);
+        return send_str(buff, G_remote_gpib_addr);
     }
 
     return false;
 }
-
 
 void print_error(error_t err) {
     switch (err) {
@@ -826,13 +891,13 @@ void print_error(error_t err) {
 // --- Main program ---
 
 void setup() {
-    serial_begin(default_baud);
+    serial_begin(DEFAULT_BAUD);
 
-    gpib_buffer.len = gpib_buffer_len;
-    gpib_buffer.bytes = gpib_buffer_bytes;
+    G_gpib_buffer.len = G_GPIB_BUFFER_LEN;
+    G_gpib_buffer.bytes = G_gpib_buffer_bytes;
 
-    serial_buffer.len = serial_buffer_len;
-    serial_buffer.bytes = serial_buffer_bytes;
+    G_serial_buffer.len = G_SERIAL_BUFFER_LEN;
+    G_serial_buffer.bytes = G_serial_buffer_bytes;
 
     // Blink the built-in LED to show we are running.
     // (The Arduino bootloader can take up to 10 seconds before our program
@@ -860,17 +925,17 @@ void setup() {
 
 
 void loop() {
-    error_t err = read_serial_line(&serial_buffer);
+    error_t err = read_serial_line(&G_serial_buffer);
 
     if (err != OK_NO_ERROR) {
         print_error(err);
         return;
     }
 
-    if (parse_and_run_prologix_style_cmd(serial_buffer.str)) {
+    if (parse_and_run_prologix_style_cmd(G_serial_buffer.str)) {
         serial_write_str("ok\n");
     } else {
-        serial_write_str("error\n");        
+        serial_write_str("error\n");
     }
 }
 
