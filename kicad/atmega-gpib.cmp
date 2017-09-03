@@ -1,4 +1,4 @@
-Cmp-Mod V01 Created by CvPcb (22-Jun-2014 BZR 4027)-stable date = Sat 02 Sep 2017 08:41:34 PM CDT
+Cmp-Mod V01 Created by CvPcb (22-Jun-2014 BZR 4027)-stable date = Sat 02 Sep 2017 09:00:18 PM CDT
 
 BeginCmp
 TimeStamp = /5910352C;
@@ -162,7 +162,7 @@ IdModule  = R_AXIAL_0W25_059A_PL;
 EndCmp
 
 BeginCmp
-TimeStamp = /59AB3EB7;
+TimeStamp = /59AB65B3;
 Reference = U1;
 ValeurCmp = MCP2221A;
 IdModule  = DIP14_PL;
