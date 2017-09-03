@@ -1,4 +1,4 @@
-update=Wed 31 May 2017 11:06:09 PM CDT
+update=Sat 02 Sep 2017 08:42:57 PM CDT
 version=1
 last_client=kicad
 [pcbnew]
@@ -20,9 +20,29 @@ SolderMaskMinWidth=0.000000000000
 DrawSegmentWidth=0.200000000000
 BoardOutlineThickness=0.100000000000
 ModuleOutlineThickness=0.150000000000
-[cvpcb]
-version=1
-NetIExt=net
+[pcbnew/libraries]
+LibName1=OSHW-logo
+LibName2=PL_1pin
+LibName3=PL_capacitors
+LibName4=PL_connectors
+LibName5=PL_diodes
+LibName6=PL_DIP
+LibName7=PL_displays
+LibName8=PL_heatsinks
+LibName9=PL_inductors
+LibName10=PL_LEDs
+LibName11=PL_mounting_holes
+LibName12=PL_pads
+LibName13=PL_relays
+LibName14=PL_resistors
+LibName15=PL_SMD_DIL
+LibName16=PL_SSOP
+LibName17=PL_switches
+LibName18=PL_test_point
+LibName19=PL_TO-46
+LibName20=PL_TO-92
+LibName21=PL_TO-220
+LibDir=parts
 [schematic_editor]
 version=1
 PageLayoutDescrFile=
@@ -92,5 +112,8 @@ LibName47=opto
 LibName48=atmel
 LibName49=contrib
 LibName50=valves
+[cvpcb]
+version=1
+NetIExt=net
 [general]
 version=1

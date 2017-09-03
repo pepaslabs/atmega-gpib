@@ -1,4 +1,8 @@
-EESchema-DOCLIB  Version 2.0  Date: 7/6/2014 10:48:33 AM
+EESchema-DOCLIB  Version 2.0  Date: Sun 02 Jul 2017 11:52:37 AM CDT
+#
+$CMP LT6657-5
+D Bandgap Reference
+$ENDCMP
 #
 $CMP TL431
 D TL431 adjustable shunt reference

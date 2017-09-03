@@ -1,4 +1,4 @@
-PCBNEW-LibModule-V1  3/25/2014 10:59:20 PM
+PCBNEW-LibModule-V1  Sat 27 May 2017 03:06:38 AM CDT
 # encoding utf-8
 Units mm
 $INDEX
@@ -8,6 +8,8 @@ $INDEX
 1pin_040_069
 1pin_08_12
 1pin_1_16
+Via_016
+Via_02
 $EndINDEX
 $MODULE 1pin_032_058
 Po 0 0 0 15 5323B8D7 00000000 ~~
@@ -111,4 +113,40 @@ Ne 0 ""
 Po 0 0
 $EndPAD
 $EndMODULE 1pin_1_16
+$MODULE Via_016
+Po 0 0 0 15 5929337E 00000000 ~~
+Li Via_016
+Cd Via, 0.016"
+Sc 0
+AR 1pin
+Op 0 0 0
+T0 0 -0.635 0.127 0.127 0 0.000001 N I 21 N "H***"
+T1 0 0.635 0.127 0.127 0 0.000001 N I 21 N "Val**"
+$PAD
+Sh "~" O 0.8128 0.8128 0 0 0
+Dr 0.4064 0 0
+At STD N 0000FFFF
+Ne 0 ""
+Po 0 0
+.ZoneConnection 2
+$EndPAD
+$EndMODULE Via_016
+$MODULE Via_02
+Po 0 0 0 15 592932CA 00000000 ~~
+Li Via_02
+Cd Via, 0.02"
+Sc 0
+AR 1pin
+Op 0 0 0
+T0 0 -0.635 0.127 0.127 0 0.000001 N I 21 N "H***"
+T1 0 0.635 0.127 0.127 0 0.000001 N I 21 N "Val**"
+$PAD
+Sh "~" O 1.016 1.016 0 0 0
+Dr 0.508 0 0
+At STD N 0000FFFF
+Ne 0 ""
+Po 0 0
+.ZoneConnection 2
+$EndPAD
+$EndMODULE Via_02
 $EndLIBRARY
