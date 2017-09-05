@@ -939,6 +939,51 @@ void loop() {
     }
 }
 
+const char *E1_SERIAL_INPUT_BUFFER_OVERFLOW = "!e1";
+
+void loop2() {
+    static bool initialized = false;
+
+    static const uint8_t SERIAL_BUFF_SIZE = 128;
+    static uint8_t serial_buff_bytes[SERIAL_BUFF_SIZE];
+    static buffer_t serial_buff;
+    static uint8_t serial_index = 0;
+    bool serial_cmd_pending = false;
+    bool serial_buff_overflow = false;
+
+    if (initialized == false) {
+        serial_buff.bytes = serial_buff_bytes;
+        clear_buffer(&serial_buff);
+        initialized = true;
+    }
+
+    // FIXME rejigger some of this using queues
+    // i.e. if serial_available and not serial_ch_queue_full, then read the char
+    
+    if (serial_cmd_pending == false && serial_available() == true) {
+        uint8_t ch = serial_read();
+        if (is_sentinel(ch)) {
+            serial_buff.bytes[serial_index] = '\0';
+            serial_cmd_pending = true;
+        } else {
+            serial_buff.bytes[serial_index] = ch;        
+            serial_index += 1;
+            if (serial_index == serial_buff.len) {
+                serial_buff_overflow = true;
+            }
+        }
+    }
+
+    if (serial_buff_overflow) {
+
+    }
+}
+
+void do_serial_step() {
+}
+
+
+
 
 // I burn this program onto an ATmega328 using the Arduino 1.6.x IDE by writing it to the
 // ATmega328 in an Arduino Uno board.  I then remove the ATmega328 from the Uno and insert
