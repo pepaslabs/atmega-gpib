@@ -54,12 +54,13 @@
 //                       +---------------------------+
 
 
-#define FIRMWARE_VERSION "2.1.1"
+#define FIRMWARE_VERSION "2.1.2"
 
 /*
 Firmware history:
 - 2.0.1: Adding "++ver" command.  Adding support for v1 and v2 boards.
 - 2.1.1: Adding "++baud" command.
+- 2.1.2: Command structure refactoring.
 */
 
 
