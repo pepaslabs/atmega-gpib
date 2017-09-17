@@ -10,8 +10,6 @@
 #include <string.h>
 
 
-void clear_buffer(buffer_t *buff)
-{
+void buffer_clear(buffer_t *buff) {
     memset(buff->bytes, 0, buff->len);
 }
-

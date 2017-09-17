@@ -11,8 +11,7 @@
 #include <stdint.h>
 
 
-struct _buffer_t
-{
+struct _buffer_t {
     uint8_t len;
     union {
         char *str;
@@ -22,7 +21,7 @@ struct _buffer_t
 typedef _buffer_t buffer_t;
 
 
-void clear_buffer(buffer_t *buff);
+void buffer_clear(buffer_t *buff);
 
 
 #endif

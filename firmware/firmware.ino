@@ -200,46 +200,6 @@ const arduino_pin_t RTS_ARDUINO_PIN = 4;  // (Note: I ended up not using these f
 #endif
 
 
-#ifdef SOFT_UART
-SoftwareSerial serial = SoftwareSerial(RX_ARDUINO_PIN, TX_ARDUINO_PIN);
-#endif
-
-int serial_available() {
-    #ifdef SOFT_UART
-        return serial.available();
-    #else
-        return Serial.available();
-    #endif   
-}
-
-size_t serial_write_str(const char *str) {
-    #ifdef SOFT_UART
-        return serial.write(str);
-    #else
-        return Serial.write(str);
-    #endif
-}
-
-int serial_read() {
-    #ifdef SOFT_UART
-        return serial.read();
-    #else
-        return Serial.read();
-    #endif    
-}
-
-void serial_begin(baud_rate_t baud_rate) {
-    #ifdef SOFT_UART
-        // Configure the serial pins
-        pinMode(RX_ARDUINO_PIN, INPUT);
-        pinMode(TX_ARDUINO_PIN, OUTPUT);
-        serial.begin(baud_rate);
-    #else
-        Serial.begin(baud_rate);
-    #endif
-}
-
-
 // --- GPIB implementation ---
 
 // See this excellent resource on how GPIB works:
@@ -892,7 +852,7 @@ void print_error(error_t err) {
 // --- Main program ---
 
 void setup() {
-    serial_begin(DEFAULT_BAUD);
+
 
     G_gpib_buffer.len = G_GPIB_BUFFER_LEN;
     G_gpib_buffer.bytes = G_gpib_buffer_bytes;
@@ -940,47 +900,170 @@ void loop() {
     }
 }
 
-const char *E1_SERIAL_INPUT_BUFFER_OVERFLOW = "!e1";
+error_t serial_output_msg_queue[10];
+error_t *serial_output_msg_queue_head;
+error_t *serial_output_msg_queue_tail;
+
+
+
+const char *E1_SERIAL_INPUT_BUFFER_OVERFLOW = "!1";
+
+
+
+typedef enum _read_serial_byte_ret_t {
+    read_serial_byte_ret_t_NOT_AVAILABLE=1,
+    read_serial_byte_ret_t_ONE_BYTE_READ=2,
+    read_serial_byte_ret_t_SENTINEL_REACHED=3,
+    read_serial_byte_ret_t_OVERFLOW=4
+} read_serial_byte_ret_t;
+
+read_serial_byte_ret_t read_serial_byte(buffer_t *buff, unit8_t *index) {
+    if (serial_available() == false) {
+        return read_serial_byte_ret_t_NOT_AVAILABLE;
+    }
+
+    // Read the next byte of serial input.
+    uint8_t ch = serial_read();
+    if (is_sentinel(ch)) {
+        // If the byte was a sentinel, terminate the buffer string and set the serial_cmd_pending flag.
+        buff->bytes[*index] = '\0';
+        return read_serial_byte_ret_t_SENTINEL_REACHED;
+    } else {
+        // Otherwise, this was a byte in the middle of a message, and there are more to come.
+        // Queue the byte for processing.
+        buff->bytes[*index] = ch;
+        *index += 1;
+        if (*index == buff->len) {
+            // If we hit the end of the buffer without reaching a sentinel, that's a buffer overflow error.
+            // Add the error code to the serial output queue and reset the input buffer.
+            return read_serial_byte_ret_t_OVERFLOW;
+        } else {
+            return read_serial_byte_ret_t_ONE_BYTE_READ;
+        }
+    }
+}
+
+
+bool write_serial_byte(buffer_t *buff, unit8_t *index) {
+    bool ret = serial_write_nonblock(buff->bytes[*index]);
+FIXME pick up here.  figure out how to track the number of bytes left to send in output buffer.
+}
+
+
+/*
+
+- if there is a message in the serial output queue, send a byte
+
+- check if serial input is available
+ - read a byte into the buffer
+
+- if the serial input buffer is ready, parse the command
+
+- if there is an active command, run tick()
+
+*/
 
 void loop2() {
+
+    static serial_t serial;
+    
+    #ifdef SOFT_UART
+    static SoftwareSerial soft_serial = SoftwareSerial(RX_ARDUINO_PIN, TX_ARDUINO_PIN);
+    #endif
+    
+    static const uint8_t SERIAL_IN_BUFF_SIZE = 128;
+    static uint8_t serial_in_buff_bytes[SERIAL_IN_BUFF_SIZE];
+    static buffer_t serial_in_buff;
+    static uint8_t serial_in_index = 0;
+
+    static const uint8_t SERIAL_OUT_BUFF_SIZE = 128;
+    static uint8_t serial_out_buff_bytes[SERIAL_OUT_BUFF_SIZE];
+    static buffer_t serial_out_buff;
+    static uint8_t serial_out_index = 0;
+
     static bool initialized = false;
-
-    static const uint8_t SERIAL_BUFF_SIZE = 128;
-    static uint8_t serial_buff_bytes[SERIAL_BUFF_SIZE];
-    static buffer_t serial_buff;
-    static uint8_t serial_index = 0;
-    bool serial_cmd_pending = false;
-    bool serial_buff_overflow = false;
-
     if (initialized == false) {
-        serial_buff.bytes = serial_buff_bytes;
-        clear_buffer(&serial_buff);
+
+        #ifdef SOFT_UART
+        pinMode(RX_ARDUINO_PIN, INPUT);
+        pinMode(TX_ARDUINO_PIN, OUTPUT);
+        serial_setup(&serial, NULL, &soft_serial);
+        #else
+        serial_setup(&serial, &Serial, NULL);
+        #endif
+
+        serial_begin(&serial, DEFAULT_BAUD);
+
+        serial_in_buff.bytes = serial_in_buff_bytes;
+        buffer_clear(&serial_in_buff);
+
+        serial_out_buff.bytes = serial_out_buff_bytes;
+        buffer_clear(&serial_out_buff);
+
         initialized = true;
     }
+
+    read_serial_byte_ret_t ret = read_serial_byte(&serial_in_buff, &serial_in_index);
+    switch (ret) {
+        case read_serial_byte_ret_t_ONE_BYTE_READ:
+            // do nothing
+        case read_serial_byte_ret_t_SENTINEL_REACHED:
+            // parse the command, then reset the buffer
+            serial_in_index = 0;
+        case read_serial_byte_ret_t_OVERFLOW:
+            // queue up an error message in the serial output queue
+        case read_serial_byte_ret_t_NOT_AVAILABLE:
+            break;
+        default:
+            break;
+    }
+
 
     // FIXME rejigger some of this using queues
     // i.e. if serial_available and not serial_ch_queue_full, then read the char
     
-    if (serial_cmd_pending == false && serial_available() == true) {
+    if (serial_available() == true && serial_cmd_pending == false) {
+        // Read the next byte of serial input.
         uint8_t ch = serial_read();
         if (is_sentinel(ch)) {
-            serial_buff.bytes[serial_index] = '\0';
+            // If the byte was a sentinel, terminate the buffer string and set the serial_cmd_pending flag.
+            serial_in_buff.bytes[serial_in_index] = '\0';
             serial_cmd_pending = true;
         } else {
-            serial_buff.bytes[serial_index] = ch;        
+            // Otherwise, this was a byte in the middle of a message, and there are more to come.
+            // Queue the byte for processing.
+            serial_in_buff.bytes[serial_in_index] = ch;
             serial_index += 1;
             if (serial_index == serial_buff.len) {
+                // If we hit the end of the buffer without reaching a sentinel, that's a buffer overflow error.
+                // Add the error code to the serial output queue and reset the input buffer.
                 serial_buff_overflow = true;
             }
         }
     }
 
-    if (serial_buff_overflow) {
-
+    if (serial_buff_overflow == true) {
+        // add an error message to the serial write queue
+        // return
     }
+
+    if (serial_cmd_pending == true) {
+        // parse the command
+        serial_cmd_pending = false;
+    }
+
+    if (active_cmd != NULL) {
+        active_cmd->tick();
+        if (active_cmd->has_completed == true) {
+            active_cmd = NULL;
+        }
+    }
+
+
 }
 
 void do_serial_step() {
+
 }
 
 
